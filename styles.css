@@ -87,6 +87,8 @@ button { font: inherit; color: inherit; }
 .done-btn:hover { background: var(--hover); }
 .done-btn:disabled { color: var(--mu); border-color: var(--border); cursor: default; background: none; }
 .grp { margin-top: 12px; font-weight: 700; }
+button.grp { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 2px 0; font: inherit; font-weight: 700; cursor: pointer; }
+button.grp::after { content: ' ›'; opacity: 0.6; }
 .clear { color: #1baf7a; padding: 6px 0; font-weight: 700; }
 .note { color: var(--sec); font-size: 13px; padding: 6px 0; }
 .deep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 0 12px; border-top: 1px solid var(--line); }

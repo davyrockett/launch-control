@@ -111,5 +111,6 @@ Live: https://www.davyrockett.com/launch-control/ See README.md.
 - **Deep space layout** (David, 2026-11-21): "One cloud" (the globe) or "By list": one small solar system per list
   (sun in the list colour with "List · n" label, its reminders as planets on their own rings), three rows past the
   window. Planets fly between the two (`lb` blend). Spread lays each system out as labelled columns (two for lists over 6).
-  Clicking a sun jumps the panel to that list's group. Saved as `lc.deep-lists`.
+  Clicking a sun (or a list heading in the panel) zooms in on that system (`zoomSys`) and shows its planets' names;
+  "All lists" flies back out. Saved as `lc.deep-lists`.
 - localStorage keys start with `lc.` (`data`, `pending`, `theme`, `sync-token`).

@@ -864,12 +864,13 @@ function showStation(i) {
   if (b.k === 'someday') {
     h += '<div class="deep"><span class="lbl">Layout</span><div class="seg" role="group" aria-label="Layout">' +
       '<button type="button" class="btn" data-deep="one" aria-pressed="' + !byList + '">One cloud</button>' +
-      '<button type="button" class="btn" data-deep="lists" aria-pressed="' + byList + '">By list</button></div></div>';
+      '<button type="button" class="btn" data-deep="lists" aria-pressed="' + byList + '">By list</button></div>' +
+      (byList ? '<button type="button" class="btn" id="bAllSys">All lists</button>' : '') + '</div>';
     h += '<div class="deep"><button type="button" class="btn" id="bFreeze">' + (frozen ? 'Unfreeze' : 'Freeze') + '</button><label for="spread">Spread</label>' +
       '<input type="range" id="spread" min="0" max="100" step="1" value="' + Math.round(spread * 100) + '"><span class="out" id="spreadOut">' + spreadText() + '</span></div>';
   }
   if (!b.t.length) h += '<div class="clear">All clear.</div>';
-  else if (b.k === 'someday') { let last = ''; b.t.forEach((t) => { if (t.list !== last) { h += '<div class="grp" style="color:' + lcol(t.list) + '">' + esc(t.list) + '</div>'; last = t.list; } h += row(t); }); }
+  else if (b.k === 'someday') { let last = ''; b.t.forEach((t) => { if (t.list !== last) { h += (byList ? '<button type="button" class="grp" data-sys="' + esc(t.list) + '" title="Zoom to this list" style="color:' : '<div class="grp" style="color:') + lcol(t.list) + '">' + esc(t.list) + (byList ? '</button>' : '</div>'); last = t.list; } h += row(t); }); }
   else b.t.forEach((t) => { h += row(t); });
   panelBody.innerHTML = h;
   panel.scrollTop = 0;
@@ -881,8 +882,11 @@ panel.addEventListener('click', (e) => {
   if (dm) {
     byList = dm.dataset.deep === 'lists'; store.set('deep-lists', byList);
     panelBody.querySelectorAll('[data-deep]').forEach((b) => b.setAttribute('aria-pressed', String(b === dm)));
-    if (cur === 6 && !walk) deepView(); return;
+    if (cur === 6 && !walk) { deepView(); showStation(6); } return;
   }
+  if (e.target.closest('#bAllSys')) { deepView(); return; }
+  const gs = e.target.closest('[data-sys]');
+  if (gs) { zoomSys(gs.dataset.sys); gs.classList.remove('hit'); void gs.offsetWidth; gs.classList.add('hit'); return; }
   if (e.target.closest('#bFreeze')) { frozen = !frozen; e.target.closest('#bFreeze').textContent = frozen ? 'Unfreeze' : 'Freeze'; return; }
   if (d) { markDone(d.dataset.done); return; }
   if (a) goStation(+a.dataset.st);
@@ -891,7 +895,7 @@ panel.addEventListener('click', (e) => {
 panel.addEventListener('input', (e) => {
   if (e.target.id !== 'spread') return;
   spread = +e.target.value / 100; $('spreadOut').textContent = spreadText();
-  if (cur === 6 && !walk) deepView();
+  if (cur === 6 && !walk) { if (focusSys) zoomSys(focusSys); else deepView(); }
 });
 $('panel-fold').onclick = () => panel.classList.toggle('folded');
 function unfold() { panel.classList.remove('folded'); }
@@ -962,6 +966,7 @@ function setWalk(on) {
 }
 bWalk.onclick = () => setWalk(!walk);
 function goStation(i, focusId, focusList) {
+  if (i !== 6) focusSys = null;
   if (i === 7) { goBig(); return; }
   exitBig(); cur = i; showStation(i); unfold(); dropHint();
   if (focusId) {   // from the big screen: point out that one reminder in the list
@@ -975,10 +980,21 @@ function goStation(i, focusId, focusList) {
   if (walk) return;
   // On a phone the list covers the bottom of the screen, so look a little lower to keep the station above it.
   const lift = narrow() ? 2.6 : 0;
-  if (i === 6) deepView();
+  if (i === 6) { if (focusList && byList) zoomSys(focusList); else deepView(); }
   else { const g = BK[i].g; flyTo(g.localToWorld(V(narrow() ? 0 : 2.3, 9.2 + lift, 14.5 + lift * 2)), g.localToWorld(V(narrow() ? 0 : 2.3, 7.4 - lift * 0.9, 0))); }
 }
+let focusSys = null;   // the list whose solar system is zoomed in on (By list layout)
+function zoomSys(list) {   // fly in close to one list's solar system, framing its orbits (or its spread-out columns)
+  const y = systems.find((s) => s.list === list); if (!y) { deepView(); return; }
+  focusSys = list;
+  const left = y.c.x - y.R - 0.6, right = y.c.x + (spread > 0.3 ? Math.max(y.R, y.R * 0.35 + 0.8 + y.cols * 4.4) : y.R) + 0.6;
+  const hw = (right - left) / 2, hh = Math.max(y.R * 0.6, (spread > 0.3 ? y.rows * 0.4 : 0) + 1.2) + 1.6;
+  const vf = camera.fov * Math.PI / 360, hf = Math.atan(Math.tan(vf) * camera.aspect);
+  const d = Math.max(hw / Math.tan(hf) * (narrow() ? 1.3 : 2), hh / Math.tan(vf) * 1.4, 12), sx = narrow() ? 0 : d * Math.tan(hf) * 0.27;
+  const c = V((left + right) / 2 + sx, y.c.y + 0.6, y.c.z); flyTo(c.clone().add(V(0, d * 0.22, d)), c.clone().add(V(0, narrow() ? -hh * 0.9 : 0, 0)));
+}
 function deepView() {   // out past the window (stays outside it); further back when the ring is spread out
+  focusSys = null;
   if (byList) {   // frame both rows of solar systems
     const vf = camera.fov * Math.PI / 360, hf = Math.atan(Math.tan(vf) * camera.aspect);
     const d = clamp((dsW / 2 + 2) / Math.tan(hf) * (narrow() ? 1 : 1.3), 30, 48), sx = narrow() ? 0 : d * Math.tan(hf) * 0.27;
@@ -987,7 +1003,7 @@ function deepView() {   // out past the window (stays outside it); further back 
   const k = 1 + spread * 0.25, sx = narrow() ? 0 : 7 * k;
   flyTo(DS.clone().add(V(sx, 8 * k, 36 * k)), DS.clone().add(V(sx, narrow() ? -6 * k : 0, 0)));
 }
-function goHome() { setWalk(false); exitBig(); cur = -1; const h = homeView(); flyTo(h.p, h.t); showOverview(); }
+function goHome() { setWalk(false); exitBig(); cur = -1; focusSys = null; const h = homeView(); flyTo(h.p, h.t); showOverview(); }
 $('bOver').onclick = goHome;
 $('bNext').onclick = () => { setWalk(false); goStation((cur + 1) % 8); };
 $('bWin').onclick = () => { setWalk(false); exitBig(); cur = -1; flyTo(V(0, 9, -24), V(0, 36, -220)); showOverview(); };
@@ -1067,7 +1083,7 @@ cvs.addEventListener('pointermove', (e) => {
     return;
   }
   wrap.style.cursor = 'grab';
-  if (h && h.object.userData.list) { const u = h.object.userData; showTip(e, '<b>' + esc(u.list) + '</b><br><span class="s">' + u.n + ' with no date · click to see them</span>'); }
+  if (h && h.object.userData.list) { const u = h.object.userData; showTip(e, '<b>' + esc(u.list) + '</b><br><span class="s">' + u.n + ' with no date · click to zoom in</span>'); }
   else if (h && h.object.userData.task) { const t = h.object.userData.task; showTip(e, '<b>' + esc(t.name) + '</b><br><span class="s">' + esc(t.list) + ' · ' + fmt(t) + '</span>'); }
   else tip.style.opacity = 0;
 });
@@ -1108,7 +1124,8 @@ function loop() {
       tmpV.set(Math.cos(o.th2) * o.r2, 0, Math.sin(o.th2) * o.r2).applyQuaternion(o.sys.q).add(o.sys.c).lerp(o.tgt2, e);
       o.s.position.lerp(tmpV, eL); o.s.scale.setScalar(o.s.scale.x + (2.4 - o.s.scale.x) * eL);
     }
-    o.lab.visible = la > 0.01; o.lab.material.opacity = la * 0.95;
+    const lv = focusSys && o.sys && o.sys.list === focusSys ? Math.max(la, eL) : la;   // zoomed in on its system: show names
+    o.lab.visible = lv > 0.01; o.lab.material.opacity = lv * 0.95;
     if (o.lab.visible) {   // above the planet in the cloud; to its right in a list's column
       const ls = SK + (1.15 - SK) * eL; o.lab.scale.setScalar(ls); o.lab.quaternion.copy(camera.quaternion);
       o.lab.position.copy(o.s.position).add(tmpV.set(1.7 * ls + 0.45, 0, 0).applyQuaternion(camera.quaternion).multiplyScalar(eL)); o.lab.position.y += 0.48 * SK * (1 - eL);
