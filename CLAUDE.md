@@ -89,4 +89,8 @@ Live: https://www.davyrockett.com/launch-control/ See README.md.
   out past the window. Floor pulses run from the window toward the viewer, speeding up and turning red.
 - Day scene must stay readable (David: the old all-white day view was "basically unusable"): mid-tone floor and walls,
   dark desks, light screens, no bloom by day, bucket-colour text darkened by day (`ink()`).
+- **Materials** (David, 2026-11-20: "try using real materials"): floor tiles, brushed metal (desks, frames, mullions),
+  wall panels with screws and rubber keyboard decks are textures drawn in code (`texSet`; map + bump + roughness),
+  near-white so the day/night palette still sets the tone. `box()` scales UVs to real size (`TEXU` units per repeat).
+  The v4 attempt at colour management/tone mapping/shadows/reflections was undone at David's request.
 - localStorage keys start with `lc.` (`data`, `pending`, `theme`, `sync-token`).

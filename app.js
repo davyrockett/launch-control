@@ -235,7 +235,13 @@ if (THREE.EffectComposer && THREE.UnrealBloomPass && THREE.RenderPass) {
 }
 const mat = (c, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.85, metalness: 0.15 }, o));
 const basic = (c, o = {}) => new THREE.MeshBasicMaterial(Object.assign({ color: c }, o));
-const box = (w, h, d, m, x, y, z, p = scene) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); p.add(b); return b; };
+// Textures repeat every TEXU units of real size (not once per face), so a long wall and a small desk share one scale.
+const TEXU = 6;
+function uvWorld(g, w, h, d) {
+  const uv = g.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];   // +x, -x, +y, -y, +z, -z faces
+  for (let i = 0; i < uv.count; i++) { const f = dims[Math.floor(i / 4)]; uv.setXY(i, uv.getX(i) * f[0] / TEXU, uv.getY(i) * f[1] / TEXU); }
+}
+const box = (w, h, d, m, x, y, z, p = scene) => { const g = new THREE.BoxGeometry(w, h, d); uvWorld(g, w, h, d); const b = new THREE.Mesh(g, m); b.position.set(x, y, z); p.add(b); return b; };
 
 const amb = new THREE.AmbientLight(0x2a3550, 0.5); scene.add(amb);
 const hemi = new THREE.HemisphereLight(0x22305a, 0x050505, 0.45); scene.add(hemi);
@@ -349,6 +355,75 @@ function drawScreen(b) {
 // ---------- the six stations ----------
 const deskM = mat(0x161d2b, { metalness: 0.55, roughness: 0.45 }), deskTopM = mat(0x0e1420, { metalness: 0.4, roughness: 0.5 });
 const frameM = mat(0x080c14, { metalness: 0.6, roughness: 0.35 }), keyDimM = basic(0x173a44);
+
+// ---------- real materials: surface textures drawn here in code (nothing to download) ----------
+// Each set is near-white, so the day/night colours above still set the overall tone; the textures add the detail.
+// map = colour detail, bump = small dents and ridges that catch the light, rough = where it's shinier or duller.
+function texSet(draw, n = 512) {
+  const out = {};
+  ['map', 'bump', 'rough'].forEach((k) => {
+    const c = document.createElement('canvas'); c.width = c.height = n; draw[k](c.getContext('2d'), n);
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); out[k] = t;
+  });
+  return out;
+}
+let tsd = 7; const trnd = () => (tsd = (tsd * 16807) % 2147483647) / 2147483647;
+function grain(x, n, amt) {   // fine speckle over everything drawn so far
+  const d = x.getImageData(0, 0, n, n), p = d.data;
+  for (let i = 0; i < p.length; i += 4) { const v = (trnd() - 0.5) * amt; p[i] += v; p[i + 1] += v; p[i + 2] += v; }
+  x.putImageData(d, 0, 0);
+}
+const g8 = (v) => `rgb(${v},${v},${v})`;
+// Raised-floor tiles: 2 x 2 per texture, each a slightly different shade, with dark seams and a bevel.
+const floorT = texSet({
+  map: (x, n) => { const h = n / 2; for (let i = 0; i < 4; i++) { const tx = (i % 2) * h, ty = (i >> 1) * h;
+      x.fillStyle = g8(228 + Math.round(trnd() * 16)); x.fillRect(tx, ty, h, h);
+      x.fillStyle = 'rgba(255,255,255,0.22)'; x.fillRect(tx + 5, ty + 5, h - 10, 3); x.fillRect(tx + 5, ty + 5, 3, h - 10);
+      x.fillStyle = 'rgba(0,0,0,0.1)'; x.fillRect(tx + 5, ty + h - 8, h - 10, 3); x.fillRect(tx + h - 8, ty + 5, 3, h - 10);
+      x.strokeStyle = g8(172); x.lineWidth = 4; x.strokeRect(tx + 1, ty + 1, h - 2, h - 2); }
+    grain(x, n, 16); },
+  bump: (x, n) => { const h = n / 2; x.fillStyle = '#000'; x.fillRect(0, 0, n, n);
+    for (let i = 0; i < 4; i++) { const tx = (i % 2) * h, ty = (i >> 1) * h; x.fillStyle = g8(150); x.fillRect(tx + 4, ty + 4, h - 8, h - 8); x.fillStyle = '#fff'; x.fillRect(tx + 9, ty + 9, h - 18, h - 18); }
+    grain(x, n, 10); },
+  rough: (x, n) => { x.fillStyle = g8(200); x.fillRect(0, 0, n, n); const h = n / 2;
+    for (let i = 0; i < 4; i++) { x.fillStyle = g8(170 + Math.round(trnd() * 50)); x.fillRect((i % 2) * h + 6, (i >> 1) * h + 6, h - 12, h - 12); }
+    grain(x, n, 40); },
+});
+// Brushed metal: long horizontal streaks.
+function streaks(x, n, base, spread, alpha) {
+  x.fillStyle = g8(base); x.fillRect(0, 0, n, n);
+  for (let i = 0; i < 2600; i++) { const v = Math.round(base + (trnd() - 0.5) * spread), y = trnd() * n, len = 40 + trnd() * 380;
+    x.fillStyle = `rgba(${v},${v},${v},${alpha})`; x.fillRect(trnd() * n - 40, y, len, 1 + (trnd() < 0.2 ? 1 : 0)); }
+}
+const metalT = texSet({
+  map: (x, n) => { streaks(x, n, 225, 50, 0.55); grain(x, n, 6); },
+  bump: (x, n) => { streaks(x, n, 128, 120, 0.5); },
+  rough: (x, n) => { streaks(x, n, 190, 90, 0.6); },
+});
+// Wall panels: two panels across, a seam halfway up, screws in the corners.
+function panels(x, n, face, seam, screw) {
+  x.fillStyle = face; x.fillRect(0, 0, n, n); const h = n / 2;
+  x.fillStyle = seam; x.fillRect(0, 0, n, 5); x.fillRect(0, h - 2, n, 5); x.fillRect(0, 0, 5, n); x.fillRect(h - 2, 0, 5, n);
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { const sx = (i >> 1) * h + (i % 2 ? h - 18 : 18), sy = (j >> 1) * h + (j % 2 ? h - 18 : 18);
+    x.fillStyle = screw; x.beginPath(); x.arc(sx, sy, 5, 0, 6.283); x.fill(); }
+}
+const wallT = texSet({
+  map: (x, n) => { panels(x, n, g8(232), g8(150), g8(170)); x.fillStyle = 'rgba(255,255,255,0.25)';
+    for (let i = 0; i < 4; i++) x.fillRect((i % 2) * n / 2 + 8, (i >> 1) * n / 2 + 8, n / 2 - 16, 2); grain(x, n, 12); },
+  bump: (x, n) => { panels(x, n, g8(200), '#000', '#fff'); grain(x, n, 8); },
+  rough: (x, n) => { panels(x, n, g8(215), g8(255), g8(120)); grain(x, n, 30); },
+});
+// Keyboard decks: matte rubber with a fine non-slip dot grid.
+function dots(x, n, base, dot) { x.fillStyle = base; x.fillRect(0, 0, n, n); x.fillStyle = dot; for (let i = 4; i < n; i += 8) for (let j = 4; j < n; j += 8) { x.beginPath(); x.arc(i, j, 1.6, 0, 6.283); x.fill(); } }
+const rubberT = texSet({
+  map: (x, n) => { dots(x, n, g8(232), g8(244)); grain(x, n, 8); },
+  bump: (x, n) => { dots(x, n, '#000', '#fff'); },
+  rough: (x, n) => { dots(x, n, g8(255), g8(200)); },
+});
+function dress(m, t, bump) { m.map = t.map; m.bumpMap = t.bump; m.bumpScale = bump; m.roughnessMap = t.rough; m.needsUpdate = true; }
+dress(floorM, floorT, 0.035); dress(wallM, wallT, 0.04); dress(mullM, metalT, 0.008);
+dress(deskM, metalT, 0.008); dress(frameM, metalT, 0.006); dress(deskTopM, rubberT, 0.01);
+{ const uv = floor.geometry.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 80 / TEXU, uv.getY(i) * 60 / TEXU); }
 const STEP = 1.12, SLOTS = 5;
 // Rows by urgency: NOW up front and big, NEXT in the middle, LATER at the back (smaller and dimmer). Deep space is outside.
 const LAY = [{ x: -5.6, z: 5, s: 1.1, dim: 1 }, { x: 5.6, z: 5, s: 1.1, dim: 1 },
