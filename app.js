@@ -70,10 +70,16 @@ async function sendPending() {
     const d = await readJSON('done.json');
     if (d.err) return;
     const reqs = Array.isArray(d.json.requests) ? d.json.requests : [];
-    todo.forEach((p) => { if (!reqs.some((r) => r.id === p.id && r.at === p.at)) reqs.push({ id: p.id, name: p.name, list: p.list, at: p.at }); });
+    const log = Array.isArray(d.json.log) ? d.json.log : [];
+    const same = (p) => (r) => r.id === p.id && r.at === p.at;
+    // Already there (an earlier send got through but its answer was lost, e.g. the phone locked): don't send it again,
+    // or a repeating reminder would get ticked off twice.
+    const fresh = todo.filter((p) => !reqs.some(same(p)) && !log.some(same(p)));
+    if (!fresh.length) { todo.forEach((p) => { p.sent = true; }); store.set('pending', pending); return; }
+    fresh.forEach((p) => { reqs.push({ id: p.id, name: p.name, list: p.list, at: p.at }); });
     const body = JSON.stringify({ ...d.json, requests: reqs }, null, 1) + '\n';
     const put = await gh('done.json', { method: 'PUT',
-      body: JSON.stringify({ message: `Done: ${todo.map((p) => p.name).join(', ')}`.slice(0, 200), content: toB64(body), sha: d.sha }) }).catch(() => null);
+      body: JSON.stringify({ message: `Done: ${fresh.map((p) => p.name).join(', ')}`.slice(0, 200), content: toB64(body), sha: d.sha }) }).catch(() => null);
     if (!put) return;
     if (put.ok) { todo.forEach((p) => { p.sent = true; }); store.set('pending', pending); return; }
     if (put.status !== 409 && put.status !== 422) return;   // changed meanwhile: read it again

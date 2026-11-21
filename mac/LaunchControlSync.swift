@@ -184,17 +184,24 @@ func handleDone() {
   if probe.status == 404 { return }
   guard probe.status == 200 else { log("Couldn't read done.json (GitHub said \(probe.status))"); return }
   doneEtag = probe.etag
+  var handledNow: [String: [String: Any]] = [:]   // taps done in this call, kept if GitHub makes us read the file again
   for _ in 0..<3 {
     guard let cur = readFile("done.json"),
           let o = try? JSONSerialization.jsonObject(with: Data(cur.text.utf8)) as? [String: Any] else { return }
     let reqs = o["requests"] as? [[String: Any]] ?? []
     if reqs.isEmpty { return }
     var log2 = o["log"] as? [[String: Any]] ?? []
+    func key(_ e: [String: Any]) -> String { "\(e["id"] as? String ?? "")|\(e["at"] as? NSNumber ?? 0)" }
+    let logged = Set(log2.map(key))
     for r in reqs {
       guard let id = r["id"] as? String else { continue }
+      let k = key(r)
+      if logged.contains(k) { continue }   // the same tap sent twice: never tick it again (a repeating one would skip ahead)
+      if let earlier = handledNow[k] { log2.insert(earlier, at: 0); continue }
       let result = complete(id)
       log("Done: \(r["name"] as? String ?? id) -> \(result)")
       var entry = r; entry["result"] = result; entry["handled"] = Int(Date().timeIntervalSince1970 * 1000)
+      handledNow[k] = entry
       log2.insert(entry, at: 0)
     }
     let out: [String: Any] = ["requests": [], "log": Array(log2.prefix(30))]
@@ -202,7 +209,7 @@ func handleDone() {
     let s = writeFile("done.json", String(data: d, encoding: .utf8)! + "\n", "Ticked off \(reqs.count) in Reminders", sha: cur.sha)
     if s == 200 || s == 201 { doneEtag = nil; saveTasks(force: true); return }
     if s != 409 && s != 422 { log("Couldn't clear done.json (GitHub said \(s))"); return }
-    // Someone tapped Done again meanwhile: read it again. Ticking the same reminder twice is harmless.
+    // Someone tapped Done again meanwhile: read it again (taps already done above aren't ticked again).
   }
 }
 
