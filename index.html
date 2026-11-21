@@ -17,9 +17,8 @@
 <script src="suite.js" defer></script>
 <script src="share.js" defer></script>
 <script>
-// Night (dark) unless changed in Settings (David, 2026-11-20). Set before the page draws so it never flashes the wrong way first.
-(function(){var t='dark';try{var v=localStorage.getItem('lc.theme');if(v)t=JSON.parse(v);}catch(e){}
-if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.setAttribute('data-theme',t);})();
+// Panels are dark in both looks (night and dusk). Set before the page draws so it never flashes light first.
+document.documentElement.setAttribute('data-theme','dark');
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -90,9 +89,9 @@ if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light
         <p class="cap" id="key-line"></p>
         <div class="key-row"><input type="password" id="key-input" autocomplete="off" spellcheck="false" placeholder="Paste your access key"><button type="button" class="btn primary" id="key-save">Save</button></div>
       </div>
-      <div class="set-row"><div><b>Appearance</b><p class="cap">Dark unless you change it. Auto follows your device's light or dark setting.</p></div>
+      <div class="set-row"><div><b>Appearance</b><p class="cap">Night unless you change it. Auto shows dusk when your device is in light mode.</p></div>
         <div class="seg" data-key="theme" role="group" aria-label="Appearance">
-          <button type="button" class="btn" data-v="light">Light</button><button type="button" class="btn" data-v="dark">Dark</button><button type="button" class="btn" data-v="auto">Auto</button>
+          <button type="button" class="btn" data-v="light">Dusk</button><button type="button" class="btn" data-v="dark">Night</button><button type="button" class="btn" data-v="auto">Auto</button>
         </div></div>
       <div class="set-row" data-share><div><b>Share this app</b><p class="cap" data-share-link></p></div>
         <div class="btns"><button type="button" class="btn" data-share-copy>Copy link</button><button type="button" class="btn" data-share-send hidden>Share…</button></div></div>
@@ -105,7 +104,7 @@ if(t==='auto')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light
 
 <script>
 // The version shown in Settings. tools/bump.sh keeps this in step with VERSION in sw.js.
-window.APP_VERSION = 'v5';
+window.APP_VERSION = 'v6';
 </script>
 <script src="vendor/three.min.js"></script>
 <script src="vendor/three-extras.js"></script>

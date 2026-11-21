@@ -80,15 +80,18 @@ Live: https://www.davyrockett.com/launch-control/ See README.md.
   from `gh auth token --user davyrockett`. Log: `~/Library/Logs/launch-control-sync.log`. Test: `"…/Launch Control Sync" export|once`.
 - Midnight reminders with no time count as all-day. Completing a repeating reminder moves it to its next date.
 - **Night (dark) is the default** (David, 2026-11-20, "Make night mode the default"), an exception to the shared
-  "Light unless changed" rule. Appearance: Light = day scene, Dark = night scene; the toolbar's Day/Night button sets it too.
+  "Light unless changed" rule. Appearance: Dusk or Night; the toolbar button switches between them.
 - Phone: the list is a sheet along the bottom (fold button); a tall screen frames the room from outside it, and walls,
   back wall and ceiling hide while the camera is outside them ("dollhouse"). Camera glides are time-based.
 - **Layout = urgency** (David, 2026-11-20: "feel the urgency and lack of urgency"): rows step away from the viewer.
   NOW (Overdue + Today) up front and biggest, Overdue with flashing alarm beacons; NEXT (Tomorrow + This week) behind and
   wider; LATER (This month + Later) at the back, smaller and dimmer (`LAY` in app.js). Deep space (no date) is a globe far
   out past the window. Floor pulses run from the window toward the viewer, speeding up and turning red.
-- Day scene must stay readable (David: the old all-white day view was "basically unusable"): mid-tone floor and walls,
-  dark desks, light screens, no bloom by day, bucket-colour text darkened by day (`ink()`).
+- **Looks** (David, 2026-11-20, picked from previews): Night = dark room + aurora (soft purple/teal/magenta washes from
+  above that slowly breathe, `aurora`). "Day" = **Dusk**: the same dark room and dark screens, a touch lighter, with a
+  sunset through the window (no aurora). Panels/UI are dark in both. Settings and the toolbar say Dusk / Night (the stored
+  values stay `light` / `dark`). The earlier all-white and light-grey day views were rejected as too far from night.
+- Edges: the night glow pass draws into a multisampled buffer (WebGL 2), so edges stay smooth.
 - **Materials** (David, 2026-11-20: "try using real materials"): floor tiles, brushed metal (desks, frames, mullions),
   wall panels with screws and rubber keyboard decks are textures drawn in code (`texSet`; map + bump + roughness),
   near-white so the day/night palette still sets the tone. `box()` scales UVs to real size (`TEXU` units per repeat).

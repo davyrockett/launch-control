@@ -189,16 +189,16 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const FONT = '"Atkinson Hyperlegible", system-ui, sans-serif', HEAD = '"Big Shoulders Display", "Atkinson Hyperlegible", sans-serif';
 const NIGHT = { fog: 0x04060b, fogN: 320, fogF: 1100, bg: '#04060b', sky: [[0.008, 0.012, 0.035], [0.07, 0.09, 0.19], [0.22, 0.11, 0.2]], ground: 0x080b10,
   floor: [0x0b0f16, 0.65, 0.36], wall: [0x0b111c, 0.3], mull: 0x161d2b, mount: 0x070a12, desk: [0x161d2b, 0.55], deskTop: 0x0e1420, frame: 0x080c14,
-  pad: 0x262a32, keyDim: 0x173a44, strip: 0x2f8f78, inner: 0x0a1426, amb: [0x2a3550, 0.5], hemi: [0x22305a, 0x050505, 0.45],
-  sun: [0x8fa8ff, 0.35, -300, 260, -900], room: [0x9fd8ff, 0.35], spot: 2.2, bloom: [0.6, 0.62],
+  pad: 0x262a32, keyDim: 0x173a44, strip: 0x2f8f78, inner: 0x0a1426, amb: [0x2a2050, 0.7], hemi: [0x22305a, 0x050505, 0.45],
+  sun: [0x8fa8ff, 0.35, -300, 260, -900], room: [0x9fd8ff, 0.35], spot: 2.2, bloom: [0.6, 0.62], aurora: 1, sunM: [0xfff6d8, -700, 300, -1400],
   S: { bg: '#050d16', tx: '#f4f3ee', mu: '#9a9890', sec: '#c3c2b7', line: '#14303a', scan: 'rgba(255,255,255,0.022)', card: 'rgba(6,16,26,0.84)',
     acc: '#5dcaa5', acc2: '#9fe1cb', radar: 'rgba(29,158,117,0.45)', sweep: 'rgba(93,202,165,0.16)', border: '#0f6e56' } };
-const DAY = { fog: 0xc7dbed, fogN: 420, fogF: 1700, bg: '#dfe8f0', sky: [[0.2, 0.43, 0.8], [0.78, 0.86, 0.93], [0.25, 0.2, 0.12]], ground: 0x8d897f,
-  floor: [0x69717b, 0.25, 0.55], wall: [0xb9b4aa, 0.05], mull: 0x59616c, mount: 0x7d8ca0, desk: [0x3b4350, 0.35], deskTop: 0x2a313b, frame: 0x22272f,
-  pad: 0xb5b2aa, keyDim: 0x56616e, strip: 0x1d9e75, inner: 0xdfe9f2, amb: [0xffffff, 0.55], hemi: [0xdfeaff, 0x8a8170, 0.6],
-  sun: [0xfff2dc, 0.95, -600, 700, 200], room: [0xffffff, 0.4], spot: 0.6, bloom: [0, 1],
-  S: { bg: '#f6f8fa', tx: '#1a1d22', mu: '#6b6a65', sec: '#3d3d3a', line: '#d5dbe0', scan: 'rgba(0,0,0,0.022)', card: 'rgba(255,255,255,0.92)',
-    acc: '#0f6e56', acc2: '#0f6e56', radar: 'rgba(15,110,86,0.35)', sweep: 'rgba(29,158,117,0.14)', border: '#1d9e75' } };
+// "Day" is dusk (David, 2026-11-20, picked from options): the night room a touch lighter, a sunset through the window.
+const DAY = { fog: 0xc7dbed, fogN: 420, fogF: 1700, bg: '#0b0d16', sky: [[0.14, 0.18, 0.36], [0.95, 0.55, 0.36], [0.95, 0.42, 0.16]], ground: 0x8d897f,
+  floor: [0x1a1f2a, 0.65, 0.36], wall: [0x1c2230, 0.3], mull: 0x161d2b, mount: 0x7d8ca0, desk: [0x232b3a, 0.55], deskTop: 0x0e1420, frame: 0x080c14,
+  pad: 0xb5b2aa, keyDim: 0x173a44, strip: 0x2f8f78, inner: 0x0a1426, amb: [0x6a5a78, 0.8], hemi: [0xffb488, 0x1a1a2a, 0.6],
+  sun: [0xffa860, 1.0, -60, 20, -200], room: [0x9fd8ff, 0.35], spot: 2.2, bloom: [0.6, 0.62], aurora: 0, sunM: [0xffb070, -500, 60, -1400],
+  S: NIGHT.S };
 let isDay = false, S = NIGHT.S;
 
 const wrap = $('wrap'), panel = $('panel'), panelBody = $('panel-body'), tip = $('tip');
@@ -227,7 +227,11 @@ controls.target.copy(hv0.t);
 controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxDistance = 460; controls.minDistance = 1.5;
 let composer = null, bloom = null;
 if (THREE.EffectComposer && THREE.UnrealBloomPass && THREE.RenderPass) {
-  composer = new THREE.EffectComposer(renderer);
+  // The glow pass draws into an off-screen picture first, which loses the browser's edge smoothing; a multisampled
+  // picture keeps edges smooth (WebGL 2: every current Mac, iPhone and iPad).
+  const rt = renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget
+    ? Object.assign(new THREE.WebGLMultisampleRenderTarget(W, H, { format: THREE.RGBAFormat }), { samples: 4 }) : undefined;
+  composer = new THREE.EffectComposer(renderer, rt);
   composer.addPass(new THREE.RenderPass(scene, camera));
   bloom = new THREE.UnrealBloomPass(new THREE.Vector2(W, H), 0.6, 0.5, 0.62);
   composer.addPass(bloom);
@@ -276,8 +280,14 @@ const stripM = basic(0x2f8f78, { transparent: true, opacity: 0.55 });
 function cullShell() {
   const p = camera.position, on = { l: p.x > -40.3, r: p.x < 40.3, b: p.z < 30.3, c: p.y < 24.3 };
   for (const k in shell) shell[k].visible = on[k];
-  shellStrips.forEach(([k, m]) => { m.visible = on[k]; });
+  shellStrips.forEach(([k, m]) => { m.visible = on[k] && m.userData.on !== false; });
 }
+
+// Aurora (night): big soft purple, teal and magenta washes from above that slowly breathe. Off at dusk.
+const aurora = { on: 1, lights: [[0x8a4dff, 1.4, 55, -22, 22, -6], [0x1fd6c0, 1.3, 55, 22, 22, -10], [0xff3fb0, 0.8, 45, 0, 22, 16]].map(([c, i, d, x, y, z]) => {
+  const l = new THREE.PointLight(c, i, d); l.position.set(x, y, z); l.userData.base = i; scene.add(l); return l; }), strips: [] };
+[[0x8a4dff, -18, -6], [0x1fd6c0, 18, -10]].forEach(([c, x, z]) => {
+  const m = box(30, 0.2, 0.2, basic(c, { transparent: true, opacity: 0.5 }), x, 23.5, z); aurora.strips.push(m); shellStrips.push(['c', m]); });
 
 // The launch pad outside the window
 const PAD = V(0, 0, -220);
@@ -313,7 +323,7 @@ let dust;
   dust = new THREE.Points(g, new THREE.PointsMaterial({ color: 0x9fe1cb, size: 0.07, transparent: true, opacity: 0.35, depthWrite: false })); scene.add(dust); }
 
 // ---------- drawing on canvases (screens, cards, labels) ----------
-const ink = (c) => { if (!isDay) return c; const k = new THREE.Color(c).multiplyScalar(0.6); return '#' + k.getHexString(); };
+const ink = (c) => c;   // bucket colours as they are (dark screens in both looks)
 function ctex(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const t = new THREE.CanvasTexture(c); t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return { c, x: c.getContext('2d'), t }; }
 function fit(x, s, w) { if (x.measureText(s).width <= w) return s; while (s.length > 1 && x.measureText(s + '…').width > w) s = s.slice(0, -1); return s + '…'; }
 function rr(x, a, b, w, h, r) { x.beginPath(); if (x.roundRect) x.roundRect(a, b, w, h, r); else x.rect(a, b, w, h); }
@@ -460,7 +470,7 @@ box(0.12, 0.04, RUN.z1 - RUN.z0, basic(0x1d9e75), 0, 0.04, (RUN.z0 + RUN.z1) / 2
 const PC = [new THREE.Color('#5dcaa5'), new THREE.Color('#eda100'), new THREE.Color('#ff3b30')];
 const pulses = []; for (let k = 0; k < 9; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), basic(0x7fe0c4)); m.userData.o = k / 9; scene.add(m); pulses.push(m); }
 function applyDim() {   // the back rows sit in a dimmer part of the room
-  BK.slice(0, 6).forEach((b) => { const v = isDay ? 1 - (1 - b.dim) * 0.55 : b.dim; b.scrM.color.setScalar(v); b.cards.forEach((m) => m.material.color.setScalar(v)); });
+  BK.slice(0, 6).forEach((b) => { const v = b.dim; b.scrM.color.setScalar(v); b.cards.forEach((m) => m.material.color.setScalar(v)); });
 }
 
 // ---------- Deep space (no due date) ----------
@@ -573,7 +583,7 @@ function setTasks(list) {
       const tx = ctex(512, 112);
       const m = new THREE.Mesh(CARDG, basic(0xffffff, { map: tx.t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
       m.userData = { bi: i, task: t, tx }; b.cs.add(m); b.cards.push(m); cardMeshes.push(m);
-      m.material.color.setScalar(isDay ? 1 - (1 - b.dim) * 0.55 : b.dim);
+      m.material.color.setScalar(b.dim);
     });
   });
   sats.forEach((o) => { scene.remove(o.s); scene.remove(o.lab); o.s.material.dispose(); o.tx.t.dispose(); o.lab.material.dispose(); });
@@ -611,7 +621,7 @@ const ICO = { sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 
   moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>' };
 function applyTheme(d) {
   isDay = d; const P = d ? DAY : NIGHT; S = P.S;
-  document.documentElement.setAttribute('data-theme', d ? 'light' : 'dark');
+  document.documentElement.setAttribute('data-theme', 'dark');   // panels stay dark in both looks
   document.querySelector('meta[name=theme-color]').setAttribute('content', P.bg);
   scene.fog.color.setHex(P.fog); scene.fog.near = P.fogN; scene.fog.far = P.fogF;
   skyU.uTop.value.setRGB(...P.sky[0]); skyU.uHor.value.setRGB(...P.sky[1]); skyU.uGlow.value.setRGB(...P.sky[2]);
@@ -623,13 +633,15 @@ function applyTheme(d) {
   sunL.color.setHex(P.sun[0]); sunL.intensity = P.sun[1]; sunL.position.set(P.sun[2], P.sun[3], P.sun[4]);
   roomL.forEach((l) => { l.color.setHex(P.room[0]); l.intensity = P.room[1]; }); spots.forEach((s) => { s.intensity = P.spot; });
   stars.visible = !d; moon.visible = !d; sunM.visible = d; beams.forEach((b) => { b.visible = !d; });
-  dust.material.color.setHex(d ? 0x5f8f80 : 0x9fe1cb); if (d) { shootT = -1; shoot.material.opacity = 0; }
+  sunM.material.color.setHex(P.sunM[0]); sunM.position.set(P.sunM[1], P.sunM[2], P.sunM[3]);
+  aurora.on = P.aurora; aurora.strips.forEach((m) => { m.userData.on = !!P.aurora; });
+  dust.material.color.setHex(0x9fe1cb); if (d) { shootT = -1; shoot.material.opacity = 0; }
   if (bloom) { bloom.strength = P.bloom[0]; bloom.threshold = P.bloom[1]; bloom.enabled = P.bloom[0] > 0; }
   applyDim();
   redrawAll();
   $('theme-ico').innerHTML = d ? ICO.moon : ICO.sun;
-  $('theme-label').textContent = d ? 'Night' : 'Day';
-  $('bTheme').title = d ? 'Switch to night' : 'Switch to day';
+  $('theme-label').textContent = d ? 'Night' : 'Dusk';
+  $('bTheme').title = d ? 'Switch to night' : 'Switch to dusk';
 }
 const darkMQ = matchMedia('(prefers-color-scheme: dark)');
 function themeFromSettings() {
@@ -872,6 +884,7 @@ function loop() {
     od.pl.intensity = on ? 0.75 + 0.9 * Math.max(0, Math.sin(T * 6.3)) : 0.75; }
   if (!frozen) { globe.rotation.y += dt * 0.1; sats.forEach((o) => { o.th += o.sp * dt; }); }
   pm.quaternion.copy(camera.quaternion);
+  aurora.lights.forEach((l, i) => { l.intensity = aurora.on * l.userData.base * (0.85 + 0.15 * Math.sin(T * 0.23 + i * 2.1)); });
   const e = spread < 0.5 ? 2 * spread * spread : 1 - Math.pow(-2 * spread + 2, 2) / 2, la = clamp((spread - 0.35) / 0.4, 0, 1);
   sats.forEach((o) => {
     tmpV.set(Math.cos(o.th) * o.r, 0, Math.sin(o.th) * o.r).applyQuaternion(o.q).multiplyScalar(DK).add(DS);
