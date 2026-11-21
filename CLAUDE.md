@@ -86,7 +86,7 @@ Live: https://www.davyrockett.com/launch-control/ See README.md.
 - **Layout = urgency** (David, 2026-11-20: "feel the urgency and lack of urgency"): rows step away from the viewer.
   NOW (Overdue + Today) up front and biggest, Overdue with flashing alarm beacons; NEXT (Tomorrow + This week) behind and
   wider; LATER (This month + Later) at the back, smaller and dimmer (`LAY` in app.js). Deep space (no date) is a globe far
-  out past the window. Floor pulses run from the window toward the viewer, speeding up and turning red.
+  out past the window. (The floor pulses that ran toward the viewer were removed 2026-11-21.)
 - **Looks** (David, 2026-11-20, picked from previews): Night = dark room + aurora (soft purple/teal/magenta washes from
   above that slowly breathe, `aurora`). "Day" = **Dusk**: the same dark room and dark screens, a touch lighter, with a
   sunset through the window (no aurora). Panels/UI are dark in both. Settings and the toolbar say Dusk / Night (the stored
@@ -101,4 +101,8 @@ Live: https://www.davyrockett.com/launch-control/ See README.md.
   and header, hazard stripes round the NOW row, NOW / NEXT / LATER painted on the floor (`marks`, `drawMarks`), a glow strip under
   each desk. Plain geometry and glowing colour only, no extra lights. Ceiling and wall pieces go in `shellStrips` so they hide in the
   dollhouse view. Chairs were tried in the preview and dropped (they blocked the keyboards). Preview code: `private/looks.js` (v1-v3).
+- **2026-11-21:** David: "Get rid of balls in middle of room" (the runway pulses; the thin floor line stays) and "Up resolution,
+  especially on phone": phones render at their own pixel density up to 3 (was 1.6), desktop at 1.5-2, and screens/cards are drawn
+  with 2x the pixels (`ctex(w, h, k)`; big screen 1.5x on phones). If a phone gets choppy, lower the cap in `setPixelRatio`.
+  The toolbar Dusk/Night button names the look you switch TO; David asked to swap it, then agreed it was right as is.
 - localStorage keys start with `lc.` (`data`, `pending`, `theme`, `sync-token`).

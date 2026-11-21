@@ -204,7 +204,8 @@ let isDay = false, S = NIGHT.S;
 const wrap = $('wrap'), panel = $('panel'), panelBody = $('panel-body'), tip = $('tip');
 let W = innerWidth || 1024, H = innerHeight || 768;   // 0 while a page opens in the background
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(touchy ? 1.6 : 2, devicePixelRatio));
+// Full sharpness (David, 2026-11-21: "Up resolution, especially on phone"): phones draw at their own pixel density, up to 3.
+renderer.setPixelRatio(touchy ? Math.min(3, devicePixelRatio) : clamp(devicePixelRatio, 1.5, 2));
 renderer.setSize(W, H);
 wrap.prepend(renderer.domElement);
 renderer.domElement.tabIndex = 0;
@@ -324,7 +325,8 @@ let dust;
 
 // ---------- drawing on canvases (screens, cards, labels) ----------
 const ink = (c) => c;   // bucket colours as they are (dark screens in both looks)
-function ctex(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const t = new THREE.CanvasTexture(c); t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return { c, x: c.getContext('2d'), t }; }
+// k draws the same picture with k times the pixels (sharper text); the drawing code keeps its own w x h units.
+function ctex(w, h, k = 1) { const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); const t = new THREE.CanvasTexture(c); t.anisotropy = renderer.capabilities.getMaxAnisotropy(); const x = c.getContext('2d'); x.scale(c.width / w, c.height / h); return { c, x, t, w, h }; }
 function fit(x, s, w) { if (x.measureText(s).width <= w) return s; while (s.length > 1 && x.measureText(s + '…').width > w) s = s.slice(0, -1); return s + '…'; }
 function rr(x, a, b, w, h, r) { x.beginPath(); if (x.roundRect) x.roundRect(a, b, w, h, r); else x.rect(a, b, w, h); }
 function dot(x, cx, cy, r, c) { x.fillStyle = c; x.beginPath(); x.arc(cx, cy, r, 0, 6.283); x.fill(); }
@@ -347,7 +349,7 @@ function drawSat(tx, t) {
   tx.t.needsUpdate = true;
 }
 function drawScreen(b) {
-  const { x, c } = b.tex, w = c.width, h = c.height;
+  const { x, w, h } = b.tex;
   x.fillStyle = S.bg; x.fillRect(0, 0, w, h); scan(x, w, h);
   x.strokeStyle = b.col; x.globalAlpha = 0.8; x.lineWidth = 5; x.strokeRect(3, 3, w - 6, h - 6); x.globalAlpha = 1;
   x.fillStyle = ink(b.col); x.font = '800 60px ' + HEAD; x.fillText(b.l.toUpperCase(), 28, 72); x.fillStyle = S.mu; x.font = '24px ' + FONT; x.fillText(b.c, 28, 106);
@@ -455,7 +457,7 @@ BK.slice(0, 6).forEach((b, i) => {
   const pl = new THREE.PointLight(col, 0.75 * L.dim * L.dim, 16); pl.position.set(0, 3.4, 3); g.add(pl); b.pl = pl;
   const sg = new THREE.Group(); sg.position.set(0, 5, -0.9); sg.rotation.x = -0.18; g.add(sg);
   const fr = box(7.7, 4.4, 0.3, frameM, 0, 0, 0, sg);
-  b.tex = ctex(640, 360);
+  b.tex = ctex(640, 360, 2);
   const scr = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 4.05), basic(0xffffff, { map: b.tex.t })); scr.position.z = 0.2; sg.add(scr); b.scrM = scr.material;
   if (i === 0) {   // Overdue: two alarm beacons that flash in turn
     b.beacons = [-3.75, 3.75].map((bx) => { box(0.62, 0.22, 0.62, frameM, bx, 2.3, 0.05, sg);
@@ -464,11 +466,9 @@ BK.slice(0, 6).forEach((b, i) => {
   [d, fr, scr].forEach((m) => { m.userData.bi = i; picks.push(m); });
   b.cs = new THREE.Group(); b.cs.position.set(0, 7.75, -0.9); g.add(b.cs); b.cards = []; b.off = 0;
 });
-// The runway: pulses come in from the window toward you, speeding up and turning red as they get close.
+// The runway: a thin line down the middle of the floor. (The balls that ran along it were removed, David 2026-11-21.)
 const RUN = { z0: -28, z1: 16 };
 box(0.12, 0.04, RUN.z1 - RUN.z0, basic(0x1d9e75), 0, 0.04, (RUN.z0 + RUN.z1) / 2);
-const PC = [new THREE.Color('#5dcaa5'), new THREE.Color('#eda100'), new THREE.Color('#ff3b30')];
-const pulses = []; for (let k = 0; k < 9; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), basic(0x7fe0c4)); m.userData.o = k / 9; scene.add(m); pulses.push(m); }
 // ---------- fit-out (David, 2026-11-21, picked from previews): the built detail that makes it a working room ----------
 // Ceiling trusses with light panels, server racks, a window sill, floor markings and a glow strip under each desk.
 // No extra lights: all of it is plain geometry and glowing colour, so it costs almost nothing.
@@ -500,7 +500,7 @@ const pulses = []; for (let k = 0; k < 9; k++) { const m = new THREE.Mesh(new TH
   BK.slice(0, 6).forEach((b) => box(8.2, 0.1, 0.1, basic(b.col, { transparent: true, opacity: 0.8 * b.dim }), 0, 0.12, 1.66, b.g));
 }
 // Row names painted on the floor (redrawn with the screens, so they pick up the heading font once it has loaded).
-const marks = [['NOW', 8.2, 5, '#ff6a50'], ['NEXT', -3, 10, '#eda100'], ['LATER', -15.5, 9, '#5dcaa5']].map(([txt, z, w, col]) => {
+const marks = [['NOW', 8.2, 5, '#ffe1d8'], ['NEXT', -3, 10, '#eda100'], ['LATER', -15.5, 9, '#5dcaa5']].map(([txt, z, w, col]) => {
   const tx = ctex(1024, 256);
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 4), basic(0xffffff, { map: tx.t, transparent: true, opacity: 0.55, depthWrite: false }));
   m.rotation.x = -Math.PI / 2; m.position.set(0, 0.03, z); scene.add(m); return { tx, txt, col }; });
@@ -520,7 +520,7 @@ const innerM = basic(0x0a1426); const inner = new THREE.Mesh(new THREE.SphereGeo
 globe.add(new THREE.Mesh(new THREE.IcosahedronGeometry(1.95, 2), basic(0x1d9e75, { wireframe: true, transparent: true, opacity: 0.45 })));
 const eq = new THREE.Mesh(new THREE.TorusGeometry(2.5, 0.025, 6, 80), basic(0x9085e9, { transparent: true, opacity: 0.7 })); eq.rotation.x = Math.PI / 2.3; globe.add(eq);
 const sats = [];
-const plaque = ctex(512, 96);
+const plaque = ctex(512, 96, 2);
 const pm = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.68), basic(0xffffff, { map: plaque.t, transparent: true })); pm.position.set(0, 3.1, 0); dsG.add(pm); pm.userData.bi = 6; picks.push(pm);
 function drawPlaque() {
   const x = plaque.x; x.clearRect(0, 0, 512, 96); x.fillStyle = S.card; rr(x, 2, 2, 508, 92, 14); x.fill();
@@ -530,7 +530,7 @@ function drawPlaque() {
 
 // ---------- the big mission control screen ----------
 const BIG = { x: 0, y: 18.5, z: -29.3, w: 27, h: 9 };
-const big = ctex(1536, 512);
+const big = ctex(1536, 512, touchy ? 1.5 : 2);
 const bigScr = new THREE.Mesh(new THREE.PlaneGeometry(BIG.w, BIG.h), basic(0xffffff, { map: big.t })); bigScr.position.set(BIG.x, BIG.y, BIG.z); scene.add(bigScr);
 bigScr.userData.big = true; picks.push(bigScr); box(28, 9.8, 0.3, frameM, 0, 18.5, -29.5);
 let tasks = [], NL = null, blips = [], segs = [], bigHover = null;
@@ -541,7 +541,7 @@ function nextLaunch() {
 function cd(ms) { if (ms < 0) return 'T+ 00:00:00'; const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), z = (n) => String(n).padStart(2, '0'); return 'T-minus ' + (d ? d + 'd ' : '') + z(Math.floor(s % 86400 / 3600)) + ':' + z(Math.floor(s % 3600 / 60)) + ':' + z(s % 60); }
 const RC = { x: 1290, y: 262, r: 190 };
 function drawBig(T) {
-  const { x, c } = big, w = c.width, h = c.height;
+  const { x, w, h } = big;
   x.fillStyle = S.bg; x.fillRect(0, 0, w, h); scan(x, w, h); x.strokeStyle = S.border; x.lineWidth = 6; x.strokeRect(3, 3, w - 6, h - 6);
   const n = new Date();
   x.fillStyle = S.acc; x.font = '800 50px ' + HEAD; x.fillText('MISSION CONTROL', 48, 74);
@@ -618,7 +618,7 @@ function setTasks(list) {
     b.cards.forEach((m) => { b.cs.remove(m); m.userData.tx.t.dispose(); m.material.dispose(); });
     b.cards = []; b.off = 0;
     b.t.forEach((t) => {
-      const tx = ctex(512, 112);
+      const tx = ctex(512, 112, 2);
       const m = new THREE.Mesh(CARDG, basic(0xffffff, { map: tx.t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
       m.userData = { bi: i, task: t, tx }; b.cs.add(m); b.cards.push(m); cardMeshes.push(m);
       m.material.color.setScalar(b.dim);
@@ -910,11 +910,6 @@ function loop() {
       b.cards.forEach((m, j) => { const p = ((((SLOTS - 1 - j) * STEP + b.off) % L) + L) % L; const f = clamp(Math.min(p / 0.7 + 1, (hi - p) / 0.7 + 1), 0, 1);
         m.position.y = p; m.material.opacity = 0.95 * f; m.visible = f > 0.02; });
     }
-  });
-  pulses.forEach((m) => {
-    const u = (T * 0.06 + m.userData.o) % 1, z = RUN.z0 + (RUN.z1 - RUN.z0) * u * u, w = clamp((z + 12) / 24, 0, 1);
-    m.position.set(0, 0.16, z); m.scale.setScalar(0.6 + u * 0.9);
-    m.material.color.copy(w < 0.5 ? PC[0].clone().lerp(PC[1], w * 2) : PC[1].clone().lerp(PC[2], w * 2 - 1));
   });
   const od = BK[0];
   if (od.beacons) { const on = od.t.length > 0, ph = (T * 1.6) % 1 < 0.5;
