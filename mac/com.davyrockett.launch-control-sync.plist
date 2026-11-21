@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Keeps the Launch Control page in step with Reminders. Installed by install.command in the launch-control repo (mac/). -->
+  <key>Label</key><string>com.davyrockett.launch-control-sync</string>
+  <key>ProgramArguments</key>
+  <array><string>/Users/davidnorgren/Applications/Launch Control Sync.app/Contents/MacOS/Launch Control Sync</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>60</integer>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>/Users/davidnorgren/Library/Logs/launch-control-sync.log</string>
+  <key>StandardErrorPath</key><string>/Users/davidnorgren/Library/Logs/launch-control-sync.log</string>
+</dict>
+</plist>
