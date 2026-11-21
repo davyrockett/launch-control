@@ -83,4 +83,10 @@ Live: https://www.davyrockett.com/launch-control/ See README.md.
   "Light unless changed" rule. Appearance: Light = day scene, Dark = night scene; the toolbar's Day/Night button sets it too.
 - Phone: the list is a sheet along the bottom (fold button); a tall screen frames the room from outside it, and walls,
   back wall and ceiling hide while the camera is outside them ("dollhouse"). Camera glides are time-based.
+- **Layout = urgency** (David, 2026-11-20: "feel the urgency and lack of urgency"): rows step away from the viewer.
+  NOW (Overdue + Today) up front and biggest, Overdue with flashing alarm beacons; NEXT (Tomorrow + This week) behind and
+  wider; LATER (This month + Later) at the back, smaller and dimmer (`LAY` in app.js). Deep space (no date) is a globe far
+  out past the window. Floor pulses run from the window toward the viewer, speeding up and turning red.
+- Day scene must stay readable (David: the old all-white day view was "basically unusable"): mid-tone floor and walls,
+  dark desks, light screens, no bloom by day, bucket-colour text darkened by day (`ink()`).
 - localStorage keys start with `lc.` (`data`, `pending`, `theme`, `sync-token`).

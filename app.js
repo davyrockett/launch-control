@@ -1,7 +1,8 @@
 'use strict';
 /* Launch Control: David's Apple Reminders as a 3D launch control room (three.js r128, in vendor/).
-   Stations along an arc hold the reminders by due date (overdue → later); reminders with no date orbit the hologram
-   ("Deep space"); the big mission control screen counts down to the next deadline.
+   Stations sit in rows by urgency: Overdue and Today up front and big, Tomorrow and This week behind, This month and
+   Later at the back (smaller, dimmer). Reminders with no date orbit a globe far out past the window ("Deep space").
+   The big mission control screen counts down to the next deadline.
    The reminders come from the private davyrockett/launch-control-data repo (tasks.json), which Launch Control Sync on
    David's Mac keeps up to date (mac/ in this repo). "Done" adds the reminder to done.json; the Mac ticks it off.
    Saved on this device (localStorage keys start with "lc."): data (last copy of tasks.json), pending (Done taps the Mac
@@ -193,9 +194,9 @@ const NIGHT = { fog: 0x04060b, fogN: 320, fogF: 1100, bg: '#04060b', sky: [[0.00
   S: { bg: '#050d16', tx: '#f4f3ee', mu: '#9a9890', sec: '#c3c2b7', line: '#14303a', scan: 'rgba(255,255,255,0.022)', card: 'rgba(6,16,26,0.84)',
     acc: '#5dcaa5', acc2: '#9fe1cb', radar: 'rgba(29,158,117,0.45)', sweep: 'rgba(93,202,165,0.16)', border: '#0f6e56' } };
 const DAY = { fog: 0xc7dbed, fogN: 420, fogF: 1700, bg: '#dfe8f0', sky: [[0.2, 0.43, 0.8], [0.78, 0.86, 0.93], [0.25, 0.2, 0.12]], ground: 0x8d897f,
-  floor: [0xe6e9ed, 0.1, 0.28], wall: [0xf1f3f5, 0.05], mull: 0xc5ccd5, mount: 0x7d8ca0, desk: [0xdde3ea, 0.2], deskTop: 0xc8d0d9, frame: 0x2b3240,
-  pad: 0xb5b2aa, keyDim: 0xaab6c2, strip: 0x1d9e75, inner: 0xe3edf5, amb: [0xffffff, 0.72], hemi: [0xcfe3ff, 0x9a8f7a, 0.7],
-  sun: [0xfff2dc, 1.05, -600, 700, 200], room: [0xffffff, 0.45], spot: 0.6, bloom: [0.22, 0.9],
+  floor: [0x69717b, 0.25, 0.55], wall: [0xb9b4aa, 0.05], mull: 0x59616c, mount: 0x7d8ca0, desk: [0x3b4350, 0.35], deskTop: 0x2a313b, frame: 0x22272f,
+  pad: 0xb5b2aa, keyDim: 0x56616e, strip: 0x1d9e75, inner: 0xdfe9f2, amb: [0xffffff, 0.55], hemi: [0xdfeaff, 0x8a8170, 0.6],
+  sun: [0xfff2dc, 0.95, -600, 700, 200], room: [0xffffff, 0.4], spot: 0.6, bloom: [0, 1],
   S: { bg: '#f6f8fa', tx: '#1a1d22', mu: '#6b6a65', sec: '#3d3d3a', line: '#d5dbe0', scan: 'rgba(0,0,0,0.022)', card: 'rgba(255,255,255,0.92)',
     acc: '#0f6e56', acc2: '#0f6e56', radar: 'rgba(15,110,86,0.35)', sweep: 'rgba(29,158,117,0.14)', border: '#1d9e75' } };
 let isDay = false, S = NIGHT.S;
@@ -210,12 +211,13 @@ renderer.domElement.tabIndex = 0;
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x04060b, 320, 1100);
 const camera = new THREE.PerspectiveCamera(52, W / H, 0.3, 4000);
-const HOME = { p: V(0, 16, 28), t: V(0, 6, -6) };
+const HOME = { p: V(0, 21, 29), t: V(0, 4, -10) };
 function homeView() {   // a tall phone screen stands further back (outside the room: those walls hide) to see the whole arc
   const a = W / H;
-  if (!(a < 1.2)) return { p: HOME.p.clone(), t: HOME.t.clone() };
-  const D = clamp(26 / (Math.tan(26 * Math.PI / 180) * a), 36, 125), dir = V(0, 0.42, 0.9).normalize();
-  const t = V(0, 4, -6);
+  if (!(a < 1.2)) { const sx = narrow() ? 0 : 7; return { p: HOME.p.clone().add(V(sx, 0, 0)), t: HOME.t.clone().add(V(sx, 0, 0)) }; }   // clear of the side panel
+  // Sized for the front rows: the least urgent back corners may crop at the edges.
+  const D = clamp(17.5 / (Math.tan(26 * Math.PI / 180) * a), 36, 125), dir = V(0, 0.42, 0.9).normalize();
+  const t = V(0, 4, -9);
   return { p: t.clone().addScaledVector(dir, D), t };
 }
 const hv0 = homeView();
@@ -305,6 +307,7 @@ let dust;
   dust = new THREE.Points(g, new THREE.PointsMaterial({ color: 0x9fe1cb, size: 0.07, transparent: true, opacity: 0.35, depthWrite: false })); scene.add(dust); }
 
 // ---------- drawing on canvases (screens, cards, labels) ----------
+const ink = (c) => { if (!isDay) return c; const k = new THREE.Color(c).multiplyScalar(0.6); return '#' + k.getHexString(); };
 function ctex(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const t = new THREE.CanvasTexture(c); t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return { c, x: c.getContext('2d'), t }; }
 function fit(x, s, w) { if (x.measureText(s).width <= w) return s; while (s.length > 1 && x.measureText(s + '…').width > w) s = s.slice(0, -1); return s + '…'; }
 function rr(x, a, b, w, h, r) { x.beginPath(); if (x.roundRect) x.roundRect(a, b, w, h, r); else x.rect(a, b, w, h); }
@@ -331,7 +334,7 @@ function drawScreen(b) {
   const { x, c } = b.tex, w = c.width, h = c.height;
   x.fillStyle = S.bg; x.fillRect(0, 0, w, h); scan(x, w, h);
   x.strokeStyle = b.col; x.globalAlpha = 0.8; x.lineWidth = 5; x.strokeRect(3, 3, w - 6, h - 6); x.globalAlpha = 1;
-  x.fillStyle = b.col; x.font = '800 60px ' + HEAD; x.fillText(b.l.toUpperCase(), 28, 72); x.fillStyle = S.mu; x.font = '24px ' + FONT; x.fillText(b.c, 28, 106);
+  x.fillStyle = ink(b.col); x.font = '800 60px ' + HEAD; x.fillText(b.l.toUpperCase(), 28, 72); x.fillStyle = S.mu; x.font = '24px ' + FONT; x.fillText(b.c, 28, 106);
   x.textAlign = 'right'; x.fillStyle = S.tx; x.font = '800 110px ' + HEAD; x.fillText(b.t.length, w - 28, 108);
   x.fillStyle = S.mu; x.font = '22px ' + FONT; x.fillText(b.t.length === 1 ? 'task' : 'tasks', w - 28, 136); x.textAlign = 'left';
   x.fillStyle = S.sec; x.font = '25px ' + FONT; x.fillText(RANGE[b.k], 28, 150); x.fillStyle = S.line; x.fillRect(28, 172, w - 56, 2);
@@ -346,49 +349,59 @@ function drawScreen(b) {
 // ---------- the six stations ----------
 const deskM = mat(0x161d2b, { metalness: 0.55, roughness: 0.45 }), deskTopM = mat(0x0e1420, { metalness: 0.4, roughness: 0.5 });
 const frameM = mat(0x080c14, { metalness: 0.6, roughness: 0.35 }), keyDimM = basic(0x173a44);
-const R = 34, CZ = 22, ANG = [-50, -30, -10, 10, 30, 50], STEP = 1.12, SLOTS = 5;
+const STEP = 1.12, SLOTS = 5;
+// Rows by urgency: NOW up front and big, NEXT in the middle, LATER at the back (smaller and dimmer). Deep space is outside.
+const LAY = [{ x: -5.6, z: 5, s: 1.1, dim: 1 }, { x: 5.6, z: 5, s: 1.1, dim: 1 },
+  { x: -17.5, z: -8, s: 0.95, dim: 0.84 }, { x: 17.5, z: -8, s: 0.95, dim: 0.84 },
+  { x: -25, z: -21, s: 0.82, dim: 0.64 }, { x: 25, z: -21, s: 0.82, dim: 0.64 }];
+const FACE = V(0, 0, 44);   // every console turns toward a point behind the usual view
 const CARDG = new THREE.PlaneGeometry(4.6, 1.0), LABG = new THREE.PlaneGeometry(3.4, 0.56), SATG = new THREE.SphereGeometry(0.16, 12, 12);
 const picks = []; let cardMeshes = [];
 BK.slice(0, 6).forEach((b, i) => {
-  const a = ANG[i] * Math.PI / 180, g = new THREE.Group();
-  g.position.set(R * Math.sin(a), 0, CZ - R * Math.cos(a)); g.rotation.y = -a; scene.add(g); b.g = g;
+  const L = LAY[i], g = new THREE.Group();
+  g.position.set(L.x, 0, L.z); g.rotation.y = Math.atan2(FACE.x - L.x, FACE.z - L.z); g.scale.setScalar(L.s); scene.add(g); b.g = g; b.dim = L.dim;
   const col = new THREE.Color(b.col), accM = basic(col);
   const d = box(8.4, 2.4, 3.2, deskM, 0, 1.2, 0, g);
   const kb = box(8.4, 0.22, 1.9, deskTopM, 0, 2.5, 0.85, g); kb.rotation.x = 0.3;
   for (let k = 0; k < 14; k++) box(0.46, 0.08, 0.3, k % 5 === 0 ? accM : keyDimM, -3.25 + (k % 7) * 1.08, 0.14, k < 7 ? -0.35 : 0.25, kb);
   b.strip = basic(col, { transparent: true, opacity: 0.9 }); box(8.4, 0.09, 0.09, b.strip, 0, 2.44, 1.64, g);
   const pool = new THREE.Mesh(new THREE.CircleGeometry(5.5, 40), basic(col, { transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false }));
-  pool.rotation.x = -Math.PI / 2; pool.position.set(0, 0.04, 2); g.add(pool);
-  const pl = new THREE.PointLight(col, 0.75, 16); pl.position.set(0, 3.4, 3); g.add(pl);
+  pool.rotation.x = -Math.PI / 2; pool.position.set(0, 0.04, 2); g.add(pool); pool.material.opacity = 0.1 * L.dim;
+  const pl = new THREE.PointLight(col, 0.75 * L.dim * L.dim, 16); pl.position.set(0, 3.4, 3); g.add(pl); b.pl = pl;
   const sg = new THREE.Group(); sg.position.set(0, 5, -0.9); sg.rotation.x = -0.18; g.add(sg);
   const fr = box(7.7, 4.4, 0.3, frameM, 0, 0, 0, sg);
   b.tex = ctex(640, 360);
-  const scr = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 4.05), basic(0xffffff, { map: b.tex.t })); scr.position.z = 0.2; sg.add(scr);
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 4.05), basic(0xffffff, { map: b.tex.t })); scr.position.z = 0.2; sg.add(scr); b.scrM = scr.material;
+  if (i === 0) {   // Overdue: two alarm beacons that flash in turn
+    b.beacons = [-3.75, 3.75].map((bx) => { box(0.62, 0.22, 0.62, frameM, bx, 2.3, 0.05, sg);
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), basic(0xff3b30, { transparent: true })); m.position.set(bx, 2.58, 0.05); sg.add(m); return m; });
+  }
   [d, fr, scr].forEach((m) => { m.userData.bi = i; picks.push(m); });
   b.cs = new THREE.Group(); b.cs.position.set(0, 7.75, -0.9); g.add(b.cs); b.cards = []; b.off = 0;
 });
-const pts = []; for (let i = 0; i <= 80; i++) { const a = (-60 + 120 * i / 80) * Math.PI / 180; pts.push(V(29 * Math.sin(a), 0.09, CZ - 29 * Math.cos(a))); }
-const curve = new THREE.CatmullRomCurve3(pts);
-scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 140, 0.07, 8, false), basic(0x1d9e75)));
-ANG.forEach((d, i) => { const a = d * Math.PI / 180, m = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.08, 20), basic(BK[i].col)); m.position.set(29 * Math.sin(a), 0.1, CZ - 29 * Math.cos(a)); scene.add(m); });
-const pulses = []; for (let k = 0; k < 8; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), basic(0x7fe0c4)); m.userData.o = k / 8; scene.add(m); pulses.push(m); }
+// The runway: pulses come in from the window toward you, speeding up and turning red as they get close.
+const RUN = { z0: -28, z1: 16 };
+box(0.12, 0.04, RUN.z1 - RUN.z0, basic(0x1d9e75), 0, 0.04, (RUN.z0 + RUN.z1) / 2);
+const PC = [new THREE.Color('#5dcaa5'), new THREE.Color('#eda100'), new THREE.Color('#ff3b30')];
+const pulses = []; for (let k = 0; k < 9; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), basic(0x7fe0c4)); m.userData.o = k / 9; scene.add(m); pulses.push(m); }
+function applyDim() {   // the back rows sit in a dimmer part of the room
+  BK.slice(0, 6).forEach((b) => { const v = isDay ? 1 - (1 - b.dim) * 0.55 : b.dim; b.scrM.color.setScalar(v); b.cards.forEach((m) => m.material.color.setScalar(v)); });
+}
 
-// ---------- the hologram (Deep space: no due date) ----------
-const HB = BK[6], HP = V(0, 0, 8);
-const table = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.9, 2.6, 40), deskM); table.position.set(HP.x, 1.3, HP.z); scene.add(table); table.userData.bi = 6; picks.push(table);
-const trg = new THREE.Mesh(new THREE.TorusGeometry(2.3, 0.06, 8, 64), basic(0x9085e9)); trg.rotation.x = Math.PI / 2; trg.position.set(HP.x, 2.62, HP.z); scene.add(trg);
-const cone = new THREE.Mesh(new THREE.CylinderGeometry(3.6, 1.8, 3.4, 40, 1, true), basic(0x9085e9, { transparent: true, opacity: 0.06, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-cone.position.set(HP.x, 4.3, HP.z); scene.add(cone);
-const globe = new THREE.Group(); globe.position.set(HP.x, 5.6, HP.z); scene.add(globe);
+// ---------- Deep space (no due date) ----------
+// Far out past the window: nothing here is due, so it drifts at a distance.
+const HB = BK[6], DS = V(24, 10, -82), DK = 2.8, SK = 1.7;   // DK: globe size; SK: the spread-out ring
+const dsG = new THREE.Group(); dsG.position.copy(DS); dsG.scale.setScalar(DK); scene.add(dsG);
+const globe = new THREE.Group(); dsG.add(globe);
 const innerM = basic(0x0a1426); const inner = new THREE.Mesh(new THREE.SphereGeometry(1.75, 32, 32), innerM); globe.add(inner); inner.userData.bi = 6; picks.push(inner);
 globe.add(new THREE.Mesh(new THREE.IcosahedronGeometry(1.95, 2), basic(0x1d9e75, { wireframe: true, transparent: true, opacity: 0.45 })));
 const eq = new THREE.Mesh(new THREE.TorusGeometry(2.5, 0.025, 6, 80), basic(0x9085e9, { transparent: true, opacity: 0.7 })); eq.rotation.x = Math.PI / 2.3; globe.add(eq);
 const sats = [];
 const plaque = ctex(512, 96);
-const pm = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.68), basic(0xffffff, { map: plaque.t, transparent: true })); pm.position.set(HP.x, 1.5, HP.z + 2.95); pm.rotation.x = -0.1; scene.add(pm); pm.userData.bi = 6; picks.push(pm);
+const pm = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.68), basic(0xffffff, { map: plaque.t, transparent: true })); pm.position.set(0, 3.1, 0); dsG.add(pm); pm.userData.bi = 6; picks.push(pm);
 function drawPlaque() {
   const x = plaque.x; x.clearRect(0, 0, 512, 96); x.fillStyle = S.card; rr(x, 2, 2, 508, 92, 14); x.fill();
-  x.fillStyle = '#9085e9'; x.font = '800 40px ' + HEAD; x.fillText('DEEP SPACE', 24, 46);
+  x.fillStyle = ink('#9085e9'); x.font = '800 40px ' + HEAD; x.fillText('DEEP SPACE', 24, 46);
   x.fillStyle = S.sec; x.font = '24px ' + FONT; x.fillText('Someday · ' + HB.t.length + ' with no date', 24, 80); plaque.t.needsUpdate = true;
 }
 
@@ -485,6 +498,7 @@ function setTasks(list) {
       const tx = ctex(512, 112);
       const m = new THREE.Mesh(CARDG, basic(0xffffff, { map: tx.t, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
       m.userData = { bi: i, task: t, tx }; b.cs.add(m); b.cards.push(m); cardMeshes.push(m);
+      m.material.color.setScalar(isDay ? 1 - (1 - b.dim) * 0.55 : b.dim);
     });
   });
   sats.forEach((o) => { scene.remove(o.s); scene.remove(o.lab); o.s.material.dispose(); o.tx.t.dispose(); o.lab.material.dispose(); });
@@ -494,11 +508,11 @@ function setTasks(list) {
   HB.t.forEach((t, i) => {
     const s = new THREE.Mesh(SATG, basic(lcol(t.list))); scene.add(s); s.userData = { bi: 6, task: t };
     const tx = ctex(512, 84);
-    const lab = new THREE.Mesh(LABG, basic(0xffffff, { map: tx.t, transparent: true, depthWrite: false, opacity: 0 })); lab.visible = false; scene.add(lab); lab.userData = { bi: 6, task: t };
+    const lab = new THREE.Mesh(LABG, basic(0xffffff, { map: tx.t, transparent: true, depthWrite: false, opacity: 0 })); lab.visible = false; lab.scale.setScalar(SK); scene.add(lab); lab.userData = { bi: 6, task: t };
     const ang = i / NS * 6.283, tier = i % tiers;
     sats.push({ s, lab, tx, t, q: new THREE.Quaternion().setFromEuler(new THREE.Euler((r2() - 0.5) * 2.2, r2() * 6.28, (r2() - 0.5) * 2.2)),
       r: 2.7 + r2() * 1.5, th: r2() * 6.283, sp: 0.15 + r2() * 0.35,
-      tgt: V(HP.x + Math.sin(ang) * ringR, 3.2 + tier * (6.4 / (tiers - 1)), HP.z + Math.cos(ang) * ringR) });
+      tgt: V(Math.sin(ang) * ringR, (tier / (tiers - 1) - 0.5) * 6.4, Math.cos(ang) * ringR).multiplyScalar(SK).add(DS) });
     cardMeshes.push(s, lab);
   });
   NL = nextLaunch();
@@ -535,7 +549,8 @@ function applyTheme(d) {
   roomL.forEach((l) => { l.color.setHex(P.room[0]); l.intensity = P.room[1]; }); spots.forEach((s) => { s.intensity = P.spot; });
   stars.visible = !d; moon.visible = !d; sunM.visible = d; beams.forEach((b) => { b.visible = !d; });
   dust.material.color.setHex(d ? 0x5f8f80 : 0x9fe1cb); if (d) { shootT = -1; shoot.material.opacity = 0; }
-  if (bloom) { bloom.strength = P.bloom[0]; bloom.threshold = P.bloom[1]; }
+  if (bloom) { bloom.strength = P.bloom[0]; bloom.threshold = P.bloom[1]; bloom.enabled = P.bloom[0] > 0; }
+  applyDim();
   redrawAll();
   $('theme-ico').innerHTML = d ? ICO.moon : ICO.sun;
   $('theme-label').textContent = d ? 'Night' : 'Day';
@@ -589,6 +604,7 @@ panel.addEventListener('click', (e) => {
 panel.addEventListener('input', (e) => {
   if (e.target.id !== 'spread') return;
   spread = +e.target.value / 100; $('spreadOut').textContent = spreadText();
+  if (cur === 6 && !walk) deepView();
 });
 $('panel-fold').onclick = () => panel.classList.toggle('folded');
 function unfold() { panel.classList.remove('folded'); }
@@ -621,8 +637,8 @@ let fly = null, watch = false, cur = -1;
 function flyTo(p, t) { fly = { p, t }; watch = false; }
 let walk = false, yaw = 0, pitch = 0, bobT = 0; const keys = {}, touch = {}; const EYE = 5.4;
 const walkHint = $('walkHint'), cross = $('cross'), padEl = $('pad'), hint = $('hint'), bWalk = $('bWalk'), bigBack = $('bigBack');
-hint.textContent = touchy ? 'Drag to look around, pinch to zoom. Tap a console, the hologram or the big screen.'
-  : 'Drag to look around. Scroll to zoom. Click a console, the hologram or the big screen. Press Enter to walk.';
+hint.textContent = touchy ? 'Drag to look around, pinch to zoom. Tap a console, the big screen, or Deep space out the window.'
+  : 'Drag to look around. Scroll to zoom. Click a console, the big screen, or Deep space out the window. Enter to walk.';
 walkHint.textContent = touchy ? 'Use the arrows to walk · drag to look' : 'W A S D or arrows to move · drag to look · Shift to run · Esc to stop';
 let hintGone = false;
 function dropHint() { if (!hintGone) { hintGone = true; hint.style.opacity = 0; } }
@@ -664,8 +680,12 @@ function goStation(i) {
   if (walk) return;
   // On a phone the list covers the bottom of the screen, so look a little lower to keep the station above it.
   const lift = narrow() ? 2.6 : 0;
-  if (i === 6) flyTo(narrow() ? V(0, 16, 28) : V(2, 12, 26), narrow() ? V(0, 3, 8) : V(2, 5.4, 8));   // far enough back to see the spread-out ring
+  if (i === 6) deepView();
   else { const g = BK[i].g; flyTo(g.localToWorld(V(narrow() ? 0 : 2.3, 9.2 + lift, 14.5 + lift * 2)), g.localToWorld(V(narrow() ? 0 : 2.3, 7.4 - lift * 0.9, 0))); }
+}
+function deepView() {   // out past the window (stays outside it); further back when the ring is spread out
+  const k = 1 + spread * 0.25, sx = narrow() ? 0 : 7 * k;
+  flyTo(DS.clone().add(V(sx, 8 * k, 36 * k)), DS.clone().add(V(sx, narrow() ? -6 * k : 0, 0)));
 }
 function goHome() { setWalk(false); exitBig(); cur = -1; const h = homeView(); flyTo(h.p, h.t); showOverview(); }
 $('bOver').onclick = goHome;
@@ -674,8 +694,8 @@ $('bWin').onclick = () => { setWalk(false); exitBig(); cur = -1; flyTo(V(0, 9, -
 let touched = false;
 controls.addEventListener('start', () => { touched = true; fly = null; watch = false; exitBig(); dropHint(); });
 
-const obstacles = BK.slice(0, 6).map((b) => ({ x: b.g.position.x, z: b.g.position.z, r: 4.8 }));
-obstacles.push({ x: HP.x, z: HP.z, r: 3.6 }); [-26, -13, 13, 26].forEach((x) => obstacles.push({ x, z: -30, r: 1 }));
+const obstacles = BK.slice(0, 6).map((b, i) => ({ x: b.g.position.x, z: b.g.position.z, r: 4.8 * LAY[i].s }));
+[-26, -13, 13, 26].forEach((x) => obstacles.push({ x, z: -30, r: 1 }));
 const rocketOb = { x: PAD.x, z: PAD.z, r: 10 }, towerOb = { x: 15, z: PAD.z, r: 5.5 };
 function collide(prev, p) {
   const m = 1.2;
@@ -766,15 +786,23 @@ function loop() {
         m.position.y = p; m.material.opacity = 0.95 * f; m.visible = f > 0.02; });
     }
   });
-  pulses.forEach((m) => { const u = 1 - ((T * 0.045 + m.userData.o) % 1); m.position.copy(curve.getPointAt(u)); m.position.y = 0.12; });
-  if (!frozen) { globe.rotation.y += dt * 0.15; sats.forEach((o) => { o.th += o.sp * dt; }); }
-  cone.material.opacity = 0.05 + 0.02 * Math.sin(T * 1.7);
+  pulses.forEach((m) => {
+    const u = (T * 0.06 + m.userData.o) % 1, z = RUN.z0 + (RUN.z1 - RUN.z0) * u * u, w = clamp((z + 12) / 24, 0, 1);
+    m.position.set(0, 0.16, z); m.scale.setScalar(0.6 + u * 0.9);
+    m.material.color.copy(w < 0.5 ? PC[0].clone().lerp(PC[1], w * 2) : PC[1].clone().lerp(PC[2], w * 2 - 1));
+  });
+  const od = BK[0];
+  if (od.beacons) { const on = od.t.length > 0, ph = (T * 1.6) % 1 < 0.5;
+    od.beacons.forEach((m, j) => { m.visible = on; m.material.opacity = (j === 0) === ph ? 1 : 0.18; });
+    od.pl.intensity = on ? 0.75 + 0.9 * Math.max(0, Math.sin(T * 6.3)) : 0.75; }
+  if (!frozen) { globe.rotation.y += dt * 0.1; sats.forEach((o) => { o.th += o.sp * dt; }); }
+  pm.quaternion.copy(camera.quaternion);
   const e = spread < 0.5 ? 2 * spread * spread : 1 - Math.pow(-2 * spread + 2, 2) / 2, la = clamp((spread - 0.35) / 0.4, 0, 1);
   sats.forEach((o) => {
-    tmpV.set(Math.cos(o.th) * o.r, 0, Math.sin(o.th) * o.r).applyQuaternion(o.q).add(globe.position);
-    o.s.position.lerpVectors(tmpV, o.tgt, e); o.s.scale.setScalar(1 + e * 0.5);
+    tmpV.set(Math.cos(o.th) * o.r, 0, Math.sin(o.th) * o.r).applyQuaternion(o.q).multiplyScalar(DK).add(DS);
+    o.s.position.lerpVectors(tmpV, o.tgt, e); o.s.scale.setScalar(DK + (SK * 1.5 - DK) * e);
     o.lab.visible = la > 0.01; o.lab.material.opacity = la * 0.95;
-    if (o.lab.visible) { o.lab.position.copy(o.s.position); o.lab.position.y += 0.48; o.lab.quaternion.copy(camera.quaternion); }
+    if (o.lab.visible) { o.lab.position.copy(o.s.position); o.lab.position.y += 0.48 * SK; o.lab.quaternion.copy(camera.quaternion); }
   });
   dust.rotation.y = Math.sin(T * 0.05) * 0.08; dust.position.y = Math.sin(T * 0.21) * 0.3;
   beams.forEach((b) => { b.rotation.z = Math.sin(T * 0.22 + b.userData.ph) * 0.38; b.rotation.x = -0.12 + Math.sin(T * 0.15 + b.userData.ph) * 0.12; });
