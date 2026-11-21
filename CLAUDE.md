@@ -89,4 +89,9 @@ Live: https://www.davyrockett.com/launch-control/ See README.md.
   out past the window. Floor pulses run from the window toward the viewer, speeding up and turning red.
 - Day scene must stay readable (David: the old all-white day view was "basically unusable"): mid-tone floor and walls,
   dark desks, light screens, no bloom by day, bucket-colour text darkened by day (`ink()`).
+- **Rendering:** colours are written in sRGB and converted to linear light (Color.setHex/setStyle are patched at the
+  top of app.js; don't use getHexString for CSS). ACES tone mapping; `basic()` materials (screens, glows) skip it.
+  Composer: multisampled half-float buffer -> bloom (night only) -> "Screen colour" pass (linear -> sRGB). Key light
+  casts the consoles' shadows; reflections come from a room snapshot (`snapEnv`, retaken after changes via `envSoon`),
+  stars and dust left out. Day relies on the key light: too much fill light or reflection washes the floor out.
 - localStorage keys start with `lc.` (`data`, `pending`, `theme`, `sync-token`).

@@ -9,6 +9,11 @@
    hasn't handled yet), theme, sync-token. */
 
 const $ = (id) => document.getElementById(id);
+// Colour management: every colour in this file is written in sRGB (like CSS); the renderer works in linear light and
+// converts back at the very end (the "Screen colour" pass), so lighting and blending look natural.
+{ const C = THREE.Color.prototype, sh = C.setHex, ss = C.setStyle;
+  C.setHex = function (h) { sh.call(this, h); return this.convertSRGBToLinear(); };
+  C.setStyle = function (v) { ss.call(this, v); return this.convertSRGBToLinear(); }; }
 const store = {
   get(k, d) { try { const v = localStorage.getItem('lc.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem('lc.' + k, JSON.stringify(v)); } catch (e) { /* private mode */ } },
@@ -190,13 +195,13 @@ const FONT = '"Atkinson Hyperlegible", system-ui, sans-serif', HEAD = '"Big Shou
 const NIGHT = { fog: 0x04060b, fogN: 320, fogF: 1100, bg: '#04060b', sky: [[0.008, 0.012, 0.035], [0.07, 0.09, 0.19], [0.22, 0.11, 0.2]], ground: 0x080b10,
   floor: [0x0b0f16, 0.65, 0.36], wall: [0x0b111c, 0.3], mull: 0x161d2b, mount: 0x070a12, desk: [0x161d2b, 0.55], deskTop: 0x0e1420, frame: 0x080c14,
   pad: 0x262a32, keyDim: 0x173a44, strip: 0x2f8f78, inner: 0x0a1426, amb: [0x2a3550, 0.5], hemi: [0x22305a, 0x050505, 0.45],
-  sun: [0x8fa8ff, 0.35, -300, 260, -900], room: [0x9fd8ff, 0.35], spot: 2.2, bloom: [0.6, 0.62],
+  sun: [0x8fa8ff, 0.35, -300, 260, -900], room: [0x9fd8ff, 0.35], spot: 2.2, bloom: [0.6, 0.62], key: [0x9fb8ff, 0.3], exp: 1.1, env: 1,
   S: { bg: '#050d16', tx: '#f4f3ee', mu: '#9a9890', sec: '#c3c2b7', line: '#14303a', scan: 'rgba(255,255,255,0.022)', card: 'rgba(6,16,26,0.84)',
     acc: '#5dcaa5', acc2: '#9fe1cb', radar: 'rgba(29,158,117,0.45)', sweep: 'rgba(93,202,165,0.16)', border: '#0f6e56' } };
 const DAY = { fog: 0xc7dbed, fogN: 420, fogF: 1700, bg: '#dfe8f0', sky: [[0.2, 0.43, 0.8], [0.78, 0.86, 0.93], [0.25, 0.2, 0.12]], ground: 0x8d897f,
-  floor: [0x69717b, 0.25, 0.55], wall: [0xb9b4aa, 0.05], mull: 0x59616c, mount: 0x7d8ca0, desk: [0x3b4350, 0.35], deskTop: 0x2a313b, frame: 0x22272f,
-  pad: 0xb5b2aa, keyDim: 0x56616e, strip: 0x1d9e75, inner: 0xdfe9f2, amb: [0xffffff, 0.55], hemi: [0xdfeaff, 0x8a8170, 0.6],
-  sun: [0xfff2dc, 0.95, -600, 700, 200], room: [0xffffff, 0.4], spot: 0.6, bloom: [0, 1],
+  floor: [0x69717b, 0.2, 0.62], wall: [0xb9b4aa, 0.05], mull: 0x59616c, mount: 0x7d8ca0, desk: [0x3b4350, 0.35], deskTop: 0x2a313b, frame: 0x22272f,
+  pad: 0xb5b2aa, keyDim: 0x56616e, strip: 0x1d9e75, inner: 0xdfe9f2, amb: [0xffffff, 0.12], hemi: [0xdfeaff, 0x8a8170, 0.25],
+  sun: [0xfff2dc, 0.45, -600, 700, 200], room: [0xffffff, 0.25], spot: 0.6, bloom: [0, 1], key: [0xfff4e6, 1.5], exp: 0.95, env: 0.14,
   S: { bg: '#f6f8fa', tx: '#1a1d22', mu: '#6b6a65', sec: '#3d3d3a', line: '#d5dbe0', scan: 'rgba(0,0,0,0.022)', card: 'rgba(255,255,255,0.92)',
     acc: '#0f6e56', acc2: '#0f6e56', radar: 'rgba(15,110,86,0.35)', sweep: 'rgba(29,158,117,0.14)', border: '#1d9e75' } };
 let isDay = false, S = NIGHT.S;
@@ -204,6 +209,9 @@ let isDay = false, S = NIGHT.S;
 const wrap = $('wrap'), panel = $('panel'), panelBody = $('panel-body'), tip = $('tip');
 let W = innerWidth || 1024, H = innerHeight || 768;   // 0 while a page opens in the background
 const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;   // film-like: bright lights roll off gently instead of clipping
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.setPixelRatio(Math.min(touchy ? 1.6 : 2, devicePixelRatio));
 renderer.setSize(W, H);
 wrap.prepend(renderer.domElement);
@@ -227,14 +235,22 @@ controls.target.copy(hv0.t);
 controls.enableDamping = true; controls.dampingFactor = 0.08; controls.maxDistance = 460; controls.minDistance = 1.5;
 let composer = null, bloom = null;
 if (THREE.EffectComposer && THREE.UnrealBloomPass && THREE.RenderPass) {
-  composer = new THREE.EffectComposer(renderer);
+  // A multisampled buffer keeps edges smooth through the glow pass; half-float keeps dark gradients free of banding.
+  const rt = renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget
+    ? new THREE.WebGLMultisampleRenderTarget(W, H, { type: THREE.HalfFloatType, format: THREE.RGBAFormat })
+    : new THREE.WebGLRenderTarget(W, H, { type: THREE.HalfFloatType, format: THREE.RGBAFormat });
+  if (rt.samples !== undefined) rt.samples = 4;
+  composer = new THREE.EffectComposer(renderer, rt);
   composer.addPass(new THREE.RenderPass(scene, camera));
   bloom = new THREE.UnrealBloomPass(new THREE.Vector2(W, H), 0.6, 0.5, 0.62);
   composer.addPass(bloom);
+  composer.addPass(new THREE.ShaderPass({ uniforms: { tDiffuse: { value: null } },   // Screen colour: linear light -> sRGB
+    vertexShader: 'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+    fragmentShader: 'uniform sampler2D tDiffuse;varying vec2 vUv;void main(){gl_FragColor=LinearTosRGB(texture2D(tDiffuse,vUv));}' }));
   composer.setSize(W, H);
 }
 const mat = (c, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.85, metalness: 0.15 }, o));
-const basic = (c, o = {}) => new THREE.MeshBasicMaterial(Object.assign({ color: c }, o));
+const basic = (c, o = {}) => new THREE.MeshBasicMaterial(Object.assign({ color: c, toneMapped: false }, o));
 const box = (w, h, d, m, x, y, z, p = scene) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.position.set(x, y, z); p.add(b); return b; };
 
 const amb = new THREE.AmbientLight(0x2a3550, 0.5); scene.add(amb);
@@ -244,7 +260,7 @@ const sunL = new THREE.DirectionalLight(0x8fa8ff, 0.35); sunL.position.set(-300,
 const skyU = { uTop: { value: new THREE.Color() }, uHor: { value: new THREE.Color() }, uGlow: { value: new THREE.Color() } };
 scene.add(new THREE.Mesh(new THREE.SphereGeometry(2000, 32, 16), new THREE.ShaderMaterial({ side: THREE.BackSide, depthWrite: false, fog: false, uniforms: skyU,
   vertexShader: 'varying vec3 vP;void main(){vP=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-  fragmentShader: 'uniform vec3 uTop;uniform vec3 uHor;uniform vec3 uGlow;varying vec3 vP;void main(){float h=clamp(vP.y,0.0,1.0);vec3 c=mix(uHor,uTop,pow(h,0.4));c+=uGlow*pow(1.0-h,12.0)*0.7;gl_FragColor=vec4(c,1.0);}' })));
+  fragmentShader: 'uniform vec3 uTop;uniform vec3 uHor;uniform vec3 uGlow;varying vec3 vP;void main(){float h=clamp(vP.y,0.0,1.0);vec3 c=mix(uHor,uTop,pow(h,0.4));c+=uGlow*pow(1.0-h,12.0)*0.7;gl_FragColor=vec4(pow(c,vec3(2.2)),1.0);}' })));
 let sd = 5; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
 let stars;
 { const g = new THREE.BufferGeometry(), n = 3000, a = new Float32Array(n * 3);
@@ -257,7 +273,25 @@ const sunM = new THREE.Mesh(new THREE.SphereGeometry(55, 32, 32), basic(0xfff6d8
 const mountM = mat(0x070a12);
 for (let i = 0; i < 46; i++) { const a = i / 46 * 6.283 + rnd() * 0.1, r = 760 + rnd() * 180, h = 50 + rnd() * 130; const m = new THREE.Mesh(new THREE.ConeGeometry(90 + rnd() * 90, h, 5), mountM); m.position.set(Math.cos(a) * r, h / 2 - 2, Math.sin(a) * r - 200); m.rotation.y = rnd() * 3; scene.add(m); }
 const groundM = mat(0x080b10); const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), groundM); ground.rotation.x = -Math.PI / 2; ground.position.y = -0.06; scene.add(ground);
-const floorM = mat(0x0b0f16, { metalness: 0.65, roughness: 0.36 }); const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 60), floorM); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+const floorM = mat(0x0b0f16, { metalness: 0.65, roughness: 0.36 }); const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 60), floorM); floor.rotation.x = -Math.PI / 2; scene.add(floor); floor.receiveShadow = true;
+// Key light: comes down from above and behind you and lays the consoles' shadows on the floor.
+const keyL = new THREE.DirectionalLight(0xffffff, 0.5); keyL.position.set(-14, 46, 30); keyL.target.position.set(0, 0, -6); scene.add(keyL, keyL.target);
+keyL.castShadow = true;
+{ const sc = keyL.shadow.camera; sc.left = -46; sc.right = 46; sc.top = 42; sc.bottom = -42; sc.near = 5; sc.far = 140;
+  const n = touchy ? 1024 : 2048; keyL.shadow.mapSize.set(n, n); keyL.shadow.bias = -0.0004; keyL.shadow.normalBias = 0.04; keyL.shadow.radius = 3; }
+// Reflections: a snapshot of the room (glowing screens included) that the shiny floor and desks reflect.
+// Taken again shortly after anything in the room changes (reminders, day/night), not every frame.
+const cubeRT = new THREE.WebGLCubeRenderTarget(touchy ? 128 : 256, { type: THREE.HalfFloatType });
+const cubeCam = new THREE.CubeCamera(0.5, 3000, cubeRT); cubeCam.position.set(0, 7, 2); scene.add(cubeCam);
+const pmrem = new THREE.PMREMGenerator(renderer);
+let envRT = null, envDue = 1;
+function snapEnv() {
+  const tm = renderer.toneMapping, sv = stars.visible; renderer.toneMapping = THREE.NoToneMapping;
+  stars.visible = false; dust.visible = false;   // pinpoint specks would sprinkle the floor
+  cubeCam.update(renderer, scene); renderer.toneMapping = tm; stars.visible = sv; dust.visible = true;
+  const next = pmrem.fromCubemap(cubeRT.texture); if (envRT) envRT.dispose(); envRT = next; scene.environment = envRT.texture;
+}
+const envSoon = () => { envDue = performance.now() + 350; };
 const wallM = mat(0x0b111c, { metalness: 0.3, roughness: 0.7 }), mullM = mat(0x161d2b, { metalness: 0.6, roughness: 0.4 });
 box(80, 2.5, 0.6, wallM, 0, 1.25, -30); box(80, 11, 0.6, wallM, 0, 18.5, -30); [-26, -13, 13, 26].forEach((x) => box(0.5, 10.5, 0.5, mullM, x, 7.75, -30));
 box(80, 0.08, 0.14, basic(0x1d9e75), 0, 2.56, -29.6);
@@ -307,8 +341,9 @@ let dust;
   dust = new THREE.Points(g, new THREE.PointsMaterial({ color: 0x9fe1cb, size: 0.07, transparent: true, opacity: 0.35, depthWrite: false })); scene.add(dust); }
 
 // ---------- drawing on canvases (screens, cards, labels) ----------
-const ink = (c) => { if (!isDay) return c; const k = new THREE.Color(c).multiplyScalar(0.6); return '#' + k.getHexString(); };
-function ctex(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const t = new THREE.CanvasTexture(c); t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return { c, x: c.getContext('2d'), t }; }
+const ink = (c) => { if (!isDay) return c; const n = parseInt(c.slice(1), 16), f = (v) => Math.round(v * 0.6).toString(16).padStart(2, '0');
+  return '#' + f(n >> 16) + f((n >> 8) & 255) + f(n & 255); };
+function ctex(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return { c, x: c.getContext('2d'), t }; }
 function fit(x, s, w) { if (x.measureText(s).width <= w) return s; while (s.length > 1 && x.measureText(s + '…').width > w) s = s.slice(0, -1); return s + '…'; }
 function rr(x, a, b, w, h, r) { x.beginPath(); if (x.roundRect) x.roundRect(a, b, w, h, r); else x.rect(a, b, w, h); }
 function dot(x, cx, cy, r, c) { x.fillStyle = c; x.beginPath(); x.arc(cx, cy, r, 0, 6.283); x.fill(); }
@@ -355,7 +390,7 @@ const LAY = [{ x: -5.6, z: 5, s: 1.1, dim: 1 }, { x: 5.6, z: 5, s: 1.1, dim: 1 }
   { x: -17.5, z: -8, s: 0.95, dim: 0.84 }, { x: 17.5, z: -8, s: 0.95, dim: 0.84 },
   { x: -25, z: -21, s: 0.82, dim: 0.64 }, { x: 25, z: -21, s: 0.82, dim: 0.64 }];
 const FACE = V(0, 0, 44);   // every console turns toward a point behind the usual view
-const CARDG = new THREE.PlaneGeometry(4.6, 1.0), LABG = new THREE.PlaneGeometry(3.4, 0.56), SATG = new THREE.SphereGeometry(0.16, 12, 12);
+const CARDG = new THREE.PlaneGeometry(4.6, 1.0), LABG = new THREE.PlaneGeometry(3.4, 0.56), SATG = new THREE.SphereGeometry(0.16, 24, 18);
 const picks = []; let cardMeshes = [];
 BK.slice(0, 6).forEach((b, i) => {
   const L = LAY[i], g = new THREE.Group();
@@ -377,13 +412,14 @@ BK.slice(0, 6).forEach((b, i) => {
       const m = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), basic(0xff3b30, { transparent: true })); m.position.set(bx, 2.58, 0.05); sg.add(m); return m; });
   }
   [d, fr, scr].forEach((m) => { m.userData.bi = i; picks.push(m); });
+  g.traverse((m) => { if (m.isMesh && !m.material.transparent) { m.castShadow = true; m.receiveShadow = true; } });
   b.cs = new THREE.Group(); b.cs.position.set(0, 7.75, -0.9); g.add(b.cs); b.cards = []; b.off = 0;
 });
 // The runway: pulses come in from the window toward you, speeding up and turning red as they get close.
 const RUN = { z0: -28, z1: 16 };
 box(0.12, 0.04, RUN.z1 - RUN.z0, basic(0x1d9e75), 0, 0.04, (RUN.z0 + RUN.z1) / 2);
 const PC = [new THREE.Color('#5dcaa5'), new THREE.Color('#eda100'), new THREE.Color('#ff3b30')];
-const pulses = []; for (let k = 0; k < 9; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), basic(0x7fe0c4)); m.userData.o = k / 9; scene.add(m); pulses.push(m); }
+const pulses = []; for (let k = 0; k < 9; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 20, 14), basic(0x7fe0c4)); m.userData.o = k / 9; scene.add(m); pulses.push(m); }
 function applyDim() {   // the back rows sit in a dimmer part of the room
   BK.slice(0, 6).forEach((b) => { const v = isDay ? 1 - (1 - b.dim) * 0.55 : b.dim; b.scrM.color.setScalar(v); b.cards.forEach((m) => m.material.color.setScalar(v)); });
 }
@@ -526,7 +562,7 @@ function setTasks(list) {
 }
 function redrawAll() {
   BK.slice(0, 6).forEach((b) => { drawScreen(b); b.cards.forEach((m) => drawCard(m.userData.tx, m.userData.task, b.col)); });
-  sats.forEach((o) => drawSat(o.tx, o.t)); drawPlaque(); drawBig(clock.elapsedTime);
+  sats.forEach((o) => drawSat(o.tx, o.t)); drawPlaque(); drawBig(clock.elapsedTime); envSoon();
 }
 
 /* =====================================================================================================
@@ -546,6 +582,8 @@ function applyTheme(d) {
   keyDimM.color.setHex(P.keyDim); stripM.color.setHex(P.strip); innerM.color.setHex(P.inner);
   amb.color.setHex(P.amb[0]); amb.intensity = P.amb[1]; hemi.color.setHex(P.hemi[0]); hemi.groundColor.setHex(P.hemi[1]); hemi.intensity = P.hemi[2];
   sunL.color.setHex(P.sun[0]); sunL.intensity = P.sun[1]; sunL.position.set(P.sun[2], P.sun[3], P.sun[4]);
+  keyL.color.setHex(P.key[0]); keyL.intensity = P.key[1]; renderer.toneMappingExposure = P.exp;
+  scene.traverse((m) => { if (m.material && m.material.isMeshStandardMaterial) m.material.envMapIntensity = P.env; });
   roomL.forEach((l) => { l.color.setHex(P.room[0]); l.intensity = P.room[1]; }); spots.forEach((s) => { s.intensity = P.spot; });
   stars.visible = !d; moon.visible = !d; sunM.visible = d; beams.forEach((b) => { b.visible = !d; });
   dust.material.color.setHex(d ? 0x5f8f80 : 0x9fe1cb); if (d) { shootT = -1; shoot.material.opacity = 0; }
@@ -841,6 +879,7 @@ function loop() {
     controls.update();
   }
   cullShell();
+  if (envDue && performance.now() > envDue) { envDue = 0; snapEnv(); }
   if (composer) composer.render(); else renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
