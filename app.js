@@ -581,12 +581,12 @@ function drawBig(T) {
 function bigRegion(uv) {
   const px = uv.x * 1536, py = (1 - uv.y) * 512;
   if (py >= 368 && py <= 458) { const s = segs.find((s) => px >= s.x0 && px < s.x1); if (s) { const b = BK[s.i]; return { kind: 'seg', i: s.i, text: b.t.length + ' ' + b.l.toLowerCase() + '. Click to open the station.' }; } }
-  if (NL && py >= 250 && py <= 356 && px >= 36 && px <= 980) return { kind: 'next', i: BI(NL.b), text: 'Open ' + NL.name };
+  if (NL && py >= 250 && py <= 356 && px >= 36 && px <= 980) return { kind: 'next', i: BI(NL.b), id: NL.id, text: 'Open ' + NL.name };
   const dx = px - RC.x, dy = py - RC.y;
   if (Math.hypot(dx, dy) < RC.r + 12) {
     let best = null, bd = touchy ? 40 : 24;
     blips.forEach((p) => { const d = Math.hypot(px - (RC.x + Math.cos(p.a) * p.r), py - (RC.y + Math.sin(p.a) * p.r)); if (d < bd) { bd = d; best = p; } });
-    if (best) return { kind: 'blip', p: best, i: best.bi, text: best.t.name + ' · ' + BK[best.bi].l };
+    if (best) return { kind: 'blip', p: best, i: best.bi, id: best.t.id, text: best.t.name + ' · ' + BK[best.bi].l };
   }
   return null;
 }
@@ -799,9 +799,13 @@ function setWalk(on) {
   }
 }
 bWalk.onclick = () => setWalk(!walk);
-function goStation(i) {
+function goStation(i, focusId) {
   if (i === 7) { goBig(); return; }
   exitBig(); cur = i; showStation(i); unfold(); dropHint();
+  if (focusId) {   // from the big screen: point out that one reminder in the list
+    const b = [...panelBody.querySelectorAll('[data-done]')].find((x) => x.dataset.done === focusId), r = b && b.closest('.task');
+    if (r) { r.classList.add('hit'); r.scrollIntoView({ block: 'center' }); }
+  }
   if (walk) return;
   // On a phone the list covers the bottom of the screen, so look a little lower to keep the station above it.
   const lift = narrow() ? 2.6 : 0;
@@ -817,7 +821,9 @@ $('bOver').onclick = goHome;
 $('bNext').onclick = () => { setWalk(false); goStation((cur + 1) % 8); };
 $('bWin').onclick = () => { setWalk(false); exitBig(); cur = -1; flyTo(V(0, 9, -24), V(0, 36, -220)); showOverview(); };
 let touched = false;
-controls.addEventListener('start', () => { touched = true; fly = null; watch = false; exitBig(); dropHint(); });
+// A press starts the camera controls too, so leaving the big screen waits for a real drag or zoom (a click on it opens things).
+controls.addEventListener('start', () => { touched = true; fly = null; watch = false; dropHint(); });
+renderer.domElement.addEventListener('wheel', () => exitBig(), { passive: true });
 
 const obstacles = BK.slice(0, 6).map((b, i) => ({ x: b.g.position.x, z: b.g.position.z, r: 4.8 * LAY[i].s }));
 [-26, -13, 13, 26].forEach((x) => obstacles.push({ x, z: -30, r: 1 }));
@@ -872,13 +878,14 @@ cvs.addEventListener('pointerup', (e) => {
   dragging = false; wrap.style.cursor = 'grab';
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > (touchy ? 10 : 5)) return;
   const h = hit(e, cardMeshes.concat(picks)); if (!h) return;
-  if (h.object.userData.big) { if (bigFocus && h.uv) { const r = bigRegion(h.uv); if (r) goStation(r.i); } else goBig(); return; }
+  if (h.object.userData.big) { if (bigFocus && h.uv) { const r = bigRegion(h.uv); if (r) goStation(r.i, r.id); } else goBig(); return; }
   goStation(h.object.userData.bi);
 });
 function showTip(e, html) { tip.innerHTML = html; tip.style.left = Math.min(e.clientX + 14, W - 270) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; tip.style.opacity = 1; }
 cvs.addEventListener('pointermove', (e) => {
   if (dragging) {
     if (walk && last) { yaw -= (e.clientX - last[0]) * 0.0045; pitch = clamp(pitch - (e.clientY - last[1]) * 0.0045, -1.35, 1.35); }
+    if (bigFocus && down && Math.hypot(e.clientX - down[0], e.clientY - down[1]) > (touchy ? 10 : 5)) exitBig();
     last = [e.clientX, e.clientY]; return;
   }
   if (e.pointerType === 'touch') return;
