@@ -108,4 +108,8 @@ Live: https://www.davyrockett.com/launch-control/ See README.md.
 - **Big screen headline** (David, 2026-11-21): a gentle motivating line instead of the old "next launch" countdown,
   which he found confusing. Lines are written in app.js (`MSG`; no AI, offline), some built from his real overdue/today
   reminders and the time of day. New one on open, every 20 minutes, or on click; `lc.msg-seen` avoids repeats.
+- **Deep space layout** (David, 2026-11-21): "One cloud" (the globe) or "By list": one small solar system per list
+  (sun in the list colour with "List · n" label, its reminders as planets on their own rings), three rows past the
+  window. Planets fly between the two (`lb` blend). Spread lays each system out as labelled columns (two for lists over 6).
+  Clicking a sun jumps the panel to that list's group. Saved as `lc.deep-lists`.
 - localStorage keys start with `lc.` (`data`, `pending`, `theme`, `sync-token`).

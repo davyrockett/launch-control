@@ -528,6 +528,47 @@ function drawPlaque() {
   x.fillStyle = S.sec; x.font = '24px ' + FONT; x.fillText('Someday · ' + HB.t.length + ' with no date', 24, 80); plaque.t.needsUpdate = true;
 }
 
+// ---------- Deep space by list: one small solar system per list (David, 2026-11-21) ----------
+// "One cloud" is the original globe; "By list" gives each list its own sun (its colour, "Crossing · 13") with that list's
+// reminders as planets on their own rings. The two layouts blend (lb 0 -> 1) so the planets fly between them.
+let byList = store.get('deep-lists', false), lb = byList ? 1 : 0, dsW = 0;
+const SYS_Y = 14;   // height of the middle row of solar systems
+const systems = [];
+function buildSystems() {
+  systems.forEach((y) => { scene.remove(y.sun); scene.remove(y.lab); y.sun.geometry.dispose(); y.sun.material.dispose(); y.lab.material.dispose(); y.tx.t.dispose(); });
+  systems.length = 0;
+  const groups = {}; sats.forEach((o) => { (groups[o.t.list] = groups[o.t.list] || []).push(o); });
+  const all = Object.keys(groups).map((k) => { const n = groups[k].length, R = 1.4 + Math.sqrt(n) * 1.35, cols = n > 6 ? 2 : 1; return { list: k, os: groups[k], n, R, cols, rows: Math.ceil(n / cols), w: Math.max(2 * R, R + 2.2 + cols * 4.4) + 2.5 }; })
+    .sort((a, b) => b.n - a.n);
+  const rows = [[], [], []], rw = [0, 0, 0];   // three rows, biggest systems shared out so the rows are about as wide
+  all.forEach((y) => { const r = rw.indexOf(Math.min(...rw)); rows[r].push(y); rw[r] += y.w; });
+  rows.forEach((row, r) => { let x = DS.x - rw[r] / 2; row.forEach((y) => { y.c = V(x + y.R + 1.25, SYS_Y + (1 - r) * 9, DS.z + (r - 1) * 3); x += y.w; }); });
+  dsW = Math.max(...rw);
+  let sd3 = 23; const r3 = () => (sd3 = (sd3 * 16807) % 2147483647) / 2147483647;
+  all.forEach((y) => {
+    y.sunR = 0.45 + Math.sqrt(y.n) * 0.16;
+    y.sun = new THREE.Mesh(new THREE.SphereGeometry(y.sunR, 28, 20), basic(lcol(y.list), { transparent: true })); y.sun.position.copy(y.c); scene.add(y.sun);
+    y.tx = ctex(512, 96, 2);
+    y.lab = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.68), basic(0xffffff, { map: y.tx.t, transparent: true, depthWrite: false })); y.lab.scale.setScalar(2); scene.add(y.lab);
+    y.sun.userData = { bi: 6, list: y.list, n: y.n }; y.lab.userData = y.sun.userData;
+    y.q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.28 + r3() * 0.12, 0, (r3() - 0.5) * 0.2));
+    y.os.forEach((o, j) => {
+      o.sys = y; o.r2 = 1.1 + (y.R - 1.1) * (j + 1) / y.n; o.sp2 = 0.55 / Math.sqrt(o.r2); o.th2 = r3() * 6.283;
+      const cj = Math.floor(j / y.rows), rj = j % y.rows;   // Spread: labelled columns beside the sun (two for a long list)
+      o.tgt2 = y.c.clone().add(V(y.R * 0.35 + 0.8 + cj * 4.4, ((y.rows - 1) / 2 - rj) * 0.8, 0));
+    });
+    cardMeshes.push(y.sun, y.lab); systems.push(y);
+    drawSys(y);
+  });
+}
+function drawSys(y) {
+  const x = y.tx.x; x.clearRect(0, 0, 512, 96); x.fillStyle = S.card; rr(x, 2, 2, 508, 92, 14); x.fill();
+  x.strokeStyle = lcol(y.list); x.globalAlpha = 0.6; x.lineWidth = 2; rr(x, 2, 2, 508, 92, 14); x.stroke(); x.globalAlpha = 1;
+  dot(x, 34, 48, 11, lcol(y.list)); x.fillStyle = S.tx; x.font = '700 36px ' + FONT; x.fillText(fit(x, y.list, 360), 58, 61);
+  x.textAlign = 'right'; x.fillStyle = S.sec; x.font = '32px ' + FONT; x.fillText(y.n, 488, 60); x.textAlign = 'left';
+  y.tx.t.needsUpdate = true;
+}
+
 // ---------- a gentle word on the big screen (David, 2026-11-21: "something gentle to get me motivated that's always new") ----------
 // Written here (no AI, works offline). Lines that use the real reminders and the time of day keep it feeling fresh;
 // lc.msg-seen remembers recent ones so nothing repeats until most of the pool has been shown.
@@ -750,6 +791,7 @@ function setTasks(list) {
       tgt: V(Math.sin(ang) * ringR, (tier / (tiers - 1) - 0.5) * 6.4, Math.cos(ang) * ringR).multiplyScalar(SK).add(DS) });
     cardMeshes.push(s, lab);
   });
+  buildSystems();
   blips = tasks.filter((t) => ['overdue', 'today', 'tomorrow', 'week'].includes(t.b)).map((t, i) => {
     const r = { overdue: [30, 75], today: [90, 125], tomorrow: [135, 160], week: [160, 185] }[t.b];
     return { a: (i * 2.399) % 6.283, r: r[0] + ((i * 37) % 100) / 100 * (r[1] - r[0]), c: BK[BI(t.b)].col, bi: BI(t.b), t };
@@ -760,7 +802,7 @@ function setTasks(list) {
 }
 function redrawAll() {
   BK.slice(0, 6).forEach((b) => { drawScreen(b); b.cards.forEach((m) => drawCard(m.userData.tx, m.userData.task, b.col)); });
-  sats.forEach((o) => drawSat(o.tx, o.t)); drawPlaque(); drawMarks(); drawBig(clock.elapsedTime);
+  sats.forEach((o) => drawSat(o.tx, o.t)); systems.forEach(drawSys); drawPlaque(); drawMarks(); drawBig(clock.elapsedTime);
 }
 
 /* =====================================================================================================
@@ -820,6 +862,9 @@ function showStation(i) {
   const b = BK[i];
   let h = '<button type="button" class="p-back" data-over="1">‹ Overview</button><div class="p-title" style="color:' + b.col + '">' + b.l + '</div><div class="p-sub">' + b.c + ' · ' + RANGE[b.k] + '</div>';
   if (b.k === 'someday') {
+    h += '<div class="deep"><span class="lbl">Layout</span><div class="seg" role="group" aria-label="Layout">' +
+      '<button type="button" class="btn" data-deep="one" aria-pressed="' + !byList + '">One cloud</button>' +
+      '<button type="button" class="btn" data-deep="lists" aria-pressed="' + byList + '">By list</button></div></div>';
     h += '<div class="deep"><button type="button" class="btn" id="bFreeze">' + (frozen ? 'Unfreeze' : 'Freeze') + '</button><label for="spread">Spread</label>' +
       '<input type="range" id="spread" min="0" max="100" step="1" value="' + Math.round(spread * 100) + '"><span class="out" id="spreadOut">' + spreadText() + '</span></div>';
   }
@@ -832,6 +877,12 @@ function showStation(i) {
 const spreadText = () => (spread === 0 ? 'Orbiting' : spread === 1 ? 'Spread out' : Math.round(spread * 100) + '%');
 panel.addEventListener('click', (e) => {
   const a = e.target.closest('[data-st]'), o = e.target.closest('[data-over]'), d = e.target.closest('[data-done]');
+  const dm = e.target.closest('[data-deep]');
+  if (dm) {
+    byList = dm.dataset.deep === 'lists'; store.set('deep-lists', byList);
+    panelBody.querySelectorAll('[data-deep]').forEach((b) => b.setAttribute('aria-pressed', String(b === dm)));
+    if (cur === 6 && !walk) deepView(); return;
+  }
   if (e.target.closest('#bFreeze')) { frozen = !frozen; e.target.closest('#bFreeze').textContent = frozen ? 'Unfreeze' : 'Freeze'; return; }
   if (d) { markDone(d.dataset.done); return; }
   if (a) goStation(+a.dataset.st);
@@ -910,12 +961,16 @@ function setWalk(on) {
   }
 }
 bWalk.onclick = () => setWalk(!walk);
-function goStation(i, focusId) {
+function goStation(i, focusId, focusList) {
   if (i === 7) { goBig(); return; }
   exitBig(); cur = i; showStation(i); unfold(); dropHint();
   if (focusId) {   // from the big screen: point out that one reminder in the list
     const b = [...panelBody.querySelectorAll('[data-done]')].find((x) => x.dataset.done === focusId), r = b && b.closest('.task');
     if (r) { r.classList.add('hit'); r.scrollIntoView({ block: 'center' }); }
+  }
+  if (focusList) {   // a list's sun in Deep space: jump to that group
+    const g = [...panelBody.querySelectorAll('.grp')].find((x) => x.textContent === focusList);
+    if (g) { g.classList.add('hit'); g.scrollIntoView({ block: 'start' }); }
   }
   if (walk) return;
   // On a phone the list covers the bottom of the screen, so look a little lower to keep the station above it.
@@ -924,6 +979,11 @@ function goStation(i, focusId) {
   else { const g = BK[i].g; flyTo(g.localToWorld(V(narrow() ? 0 : 2.3, 9.2 + lift, 14.5 + lift * 2)), g.localToWorld(V(narrow() ? 0 : 2.3, 7.4 - lift * 0.9, 0))); }
 }
 function deepView() {   // out past the window (stays outside it); further back when the ring is spread out
+  if (byList) {   // frame both rows of solar systems
+    const vf = camera.fov * Math.PI / 360, hf = Math.atan(Math.tan(vf) * camera.aspect);
+    const d = clamp((dsW / 2 + 2) / Math.tan(hf) * (narrow() ? 1 : 1.3), 30, 48), sx = narrow() ? 0 : d * Math.tan(hf) * 0.27;
+    const c = V(DS.x + sx, SYS_Y, DS.z); flyTo(c.clone().add(V(0, 4, d)), c.clone().add(V(0, narrow() ? -6 : 0, 0))); return;
+  }
   const k = 1 + spread * 0.25, sx = narrow() ? 0 : 7 * k;
   flyTo(DS.clone().add(V(sx, 8 * k, 36 * k)), DS.clone().add(V(sx, narrow() ? -6 * k : 0, 0)));
 }
@@ -990,7 +1050,7 @@ cvs.addEventListener('pointerup', (e) => {
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > (touchy ? 10 : 5)) return;
   const h = hit(e, cardMeshes.concat(picks)); if (!h) return;
   if (h.object.userData.big) { if (bigFocus && h.uv) { const r = bigRegion(h.uv); if (r && r.kind === 'msg') pickMsg(); else if (r) goStation(r.i, r.id); } else goBig(); return; }
-  goStation(h.object.userData.bi);
+  const u = h.object.userData; goStation(u.bi, u.task && u.task.id, u.list);
 });
 function showTip(e, html) { tip.innerHTML = html; tip.style.left = Math.min(e.clientX + 14, W - 270) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; tip.style.opacity = 1; }
 cvs.addEventListener('pointermove', (e) => {
@@ -1007,7 +1067,8 @@ cvs.addEventListener('pointermove', (e) => {
     return;
   }
   wrap.style.cursor = 'grab';
-  if (h && h.object.userData.task) { const t = h.object.userData.task; showTip(e, '<b>' + esc(t.name) + '</b><br><span class="s">' + esc(t.list) + ' · ' + fmt(t) + '</span>'); }
+  if (h && h.object.userData.list) { const u = h.object.userData; showTip(e, '<b>' + esc(u.list) + '</b><br><span class="s">' + u.n + ' with no date · click to see them</span>'); }
+  else if (h && h.object.userData.task) { const t = h.object.userData.task; showTip(e, '<b>' + esc(t.name) + '</b><br><span class="s">' + esc(t.list) + ' · ' + fmt(t) + '</span>'); }
   else tip.style.opacity = 0;
 });
 cvs.addEventListener('pointerleave', () => { tip.style.opacity = 0; bigHover = null; });
@@ -1033,15 +1094,29 @@ function loop() {
   if (od.beacons) { const on = od.t.length > 0, ph = (T * 1.6) % 1 < 0.5;
     od.beacons.forEach((m, j) => { m.visible = on; m.material.opacity = (j === 0) === ph ? 1 : 0.18; });
     od.pl.intensity = on ? 0.75 + 0.9 * Math.max(0, Math.sin(T * 6.3)) : 0.75; }
-  if (!frozen) { globe.rotation.y += dt * 0.1; sats.forEach((o) => { o.th += o.sp * dt; }); }
+  if (!frozen) { globe.rotation.y += dt * 0.1; sats.forEach((o) => { o.th += o.sp * dt; o.th2 += o.sp2 * dt; }); }
+  lb = byList ? Math.min(1, lb + dt / 1.4) : Math.max(0, lb - dt / 1.4);
+  const eL = lb < 0.5 ? 2 * lb * lb : 1 - Math.pow(-2 * lb + 2, 2) / 2;
+  globe.scale.setScalar(Math.max(0.001, 1 - eL)); globe.visible = eL < 0.999; pm.visible = eL < 0.5; pm.material.opacity = 1 - eL * 2;   // each sun has its own label instead
   pm.quaternion.copy(camera.quaternion);
   aurora.lights.forEach((l, i) => { l.intensity = aurora.on * l.userData.base * (0.85 + 0.15 * Math.sin(T * 0.23 + i * 2.1)); });
   const e = spread < 0.5 ? 2 * spread * spread : 1 - Math.pow(-2 * spread + 2, 2) / 2, la = clamp((spread - 0.35) / 0.4, 0, 1);
   sats.forEach((o) => {
     tmpV.set(Math.cos(o.th) * o.r, 0, Math.sin(o.th) * o.r).applyQuaternion(o.q).multiplyScalar(DK).add(DS);
     o.s.position.lerpVectors(tmpV, o.tgt, e); o.s.scale.setScalar(DK + (SK * 1.5 - DK) * e);
+    if (eL > 0 && o.sys) {   // flying to (or orbiting) its own list's sun
+      tmpV.set(Math.cos(o.th2) * o.r2, 0, Math.sin(o.th2) * o.r2).applyQuaternion(o.sys.q).add(o.sys.c).lerp(o.tgt2, e);
+      o.s.position.lerp(tmpV, eL); o.s.scale.setScalar(o.s.scale.x + (2.4 - o.s.scale.x) * eL);
+    }
     o.lab.visible = la > 0.01; o.lab.material.opacity = la * 0.95;
-    if (o.lab.visible) { o.lab.position.copy(o.s.position); o.lab.position.y += 0.48 * SK; o.lab.quaternion.copy(camera.quaternion); }
+    if (o.lab.visible) {   // above the planet in the cloud; to its right in a list's column
+      const ls = SK + (1.15 - SK) * eL; o.lab.scale.setScalar(ls); o.lab.quaternion.copy(camera.quaternion);
+      o.lab.position.copy(o.s.position).add(tmpV.set(1.7 * ls + 0.45, 0, 0).applyQuaternion(camera.quaternion).multiplyScalar(eL)); o.lab.position.y += 0.48 * SK * (1 - eL);
+    }
+  });
+  systems.forEach((y) => {
+    const v = eL > 0.01; y.sun.visible = v; y.lab.visible = v; y.sun.material.opacity = eL; y.lab.material.opacity = eL;
+    if (v) { y.lab.quaternion.copy(camera.quaternion); y.lab.position.copy(y.c); y.lab.position.y += y.sunR + 1.4 + e * ((y.rows - 1) / 2 * 0.8 + 0.4); }
   });
   dust.rotation.y = Math.sin(T * 0.05) * 0.08; dust.position.y = Math.sin(T * 0.21) * 0.3;
   beams.forEach((b) => { b.rotation.z = Math.sin(T * 0.22 + b.userData.ph) * 0.38; b.rotation.x = -0.12 + Math.sin(T * 0.15 + b.userData.ph) * 0.12; });

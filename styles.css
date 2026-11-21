@@ -92,6 +92,8 @@ button { font: inherit; color: inherit; }
 .deep { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 0 12px; border-top: 1px solid var(--line); }
 .deep input { flex: 1; min-width: 110px; accent-color: var(--accent); }
 .deep .out { min-width: 74px; color: var(--sec); font-size: 13px; }
+.deep .lbl { color: var(--sec); font-size: 13px; }
+.grp.hit { animation: task-hit 2.4s ease-out; border-radius: 6px; }
 
 /* ---------- floating bits ---------- */
 #tip { position: absolute; z-index: 5; pointer-events: none; background: var(--panel-solid); border: 1px solid var(--border); border-radius: 8px;
