@@ -469,6 +469,44 @@ const RUN = { z0: -28, z1: 16 };
 box(0.12, 0.04, RUN.z1 - RUN.z0, basic(0x1d9e75), 0, 0.04, (RUN.z0 + RUN.z1) / 2);
 const PC = [new THREE.Color('#5dcaa5'), new THREE.Color('#eda100'), new THREE.Color('#ff3b30')];
 const pulses = []; for (let k = 0; k < 9; k++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), basic(0x7fe0c4)); m.userData.o = k / 9; scene.add(m); pulses.push(m); }
+// ---------- fit-out (David, 2026-11-21, picked from previews): the built detail that makes it a working room ----------
+// Ceiling trusses with light panels, server racks, a window sill, floor markings and a glow strip under each desk.
+// No extra lights: all of it is plain geometry and glowing colour, so it costs almost nothing.
+{ const hide = (k, m) => { shellStrips.push([k, m]); return m; };   // goes away with its wall or the ceiling (dollhouse view)
+  [-24, -12, 0, 12, 24].forEach((z) => hide('c', box(79, 1.1, 0.6, mullM, 0, 23.1, z)));
+  [-27, 27].forEach((x) => hide('c', box(0.6, 0.8, 59, mullM, x, 22.6, 0)));
+  const panM = basic(0xbfe6ff, { transparent: true, opacity: 0.5 });
+  [[-8, 6], [8, 6], [-18, -6], [18, -6], [-8, -18], [8, -18]].forEach(([x, z]) => { hide('c', box(9, 0.12, 2.6, panM, x, 23.55, z)); hide('c', box(9.6, 0.3, 3.2, frameM, x, 23.6, z)); });
+  box(80, 0.3, 1.6, mullM, 0, 2.65, -29); box(80, 0.6, 1.2, mullM, 0, 13.2, -29.3);   // window sill and header
+  const lineM = basic(0x2f8f78, { transparent: true, opacity: 0.8 });
+  [-26, -13, 13, 26].forEach((x) => box(0.08, 10.4, 0.08, lineM, x, 7.8, -29.7));
+  // Server racks along the side walls: one drawn front panel of slots and status lights.
+  const rc = document.createElement('canvas'); rc.width = 256; rc.height = 512; const rx = rc.getContext('2d');
+  rx.fillStyle = '#05070b'; rx.fillRect(0, 0, 256, 512); rx.strokeStyle = '#1a2230'; rx.lineWidth = 3; rx.strokeRect(6, 6, 244, 500);
+  for (let y = 20; y < 492; y += 20) { rx.fillStyle = '#0b1018'; rx.fillRect(16, y, 224, 15);
+    for (let k = 0; k < 9; k++) if (trnd() < 0.6) { rx.fillStyle = ['#3dffb0', '#3dffb0', '#ffb030', '#4aa8ff', '#ff4a40'][Math.floor(trnd() * 4.3)]; rx.fillRect(24 + k * 9, y + 5, 5, 5); }
+    rx.fillStyle = '#131b28'; for (let k = 0; k < 10; k++) rx.fillRect(120 + k * 11, y + 3, 7, 9); }
+  const rT = new THREE.CanvasTexture(rc); rT.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const rackM = [mullM, mullM, mullM, mullM, basic(0xffffff, { map: rT }), mullM], rackG = new THREE.BoxGeometry(5.6, 11, 1.6);
+  [-1, 1].forEach((sd) => { const k = sd < 0 ? 'l' : 'r';
+    [-22, -15, -8, 8, 15, 22].forEach((z) => { const m = new THREE.Mesh(rackG, rackM); m.position.set(sd * 38.7, 5.5, z); m.rotation.y = -sd * Math.PI / 2; scene.add(m); hide(k, m); });
+    hide(k, box(0.15, 0.15, 58, basic(0x2fe0c0, { transparent: true, opacity: 0.8 }), sd * 39.5, 0.12, 0)); });
+  // Hazard stripes round the NOW row.
+  const hc = document.createElement('canvas'); hc.width = hc.height = 64; const hx = hc.getContext('2d'); hx.fillStyle = '#eda100'; hx.fillRect(0, 0, 64, 64);
+  hx.fillStyle = '#0a0a0a'; hx.beginPath(); hx.moveTo(0, 64); hx.lineTo(32, 0); hx.lineTo(64, 0); hx.lineTo(32, 64); hx.fill();
+  const stripe = (w, dp, x, z) => { const t = new THREE.CanvasTexture(hc); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(Math.max(w, dp) / 0.5, 1); if (dp > w) t.rotation = Math.PI / 2;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, dp), basic(0xffffff, { map: t, transparent: true, opacity: 0.6, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.035, z); scene.add(m); };
+  stripe(27, 0.4, 0, 0.6); stripe(27, 0.4, 0, 9.4); stripe(0.4, 9.2, -13.5, 5); stripe(0.4, 9.2, 13.5, 5);
+  BK.slice(0, 6).forEach((b) => box(8.2, 0.1, 0.1, basic(b.col, { transparent: true, opacity: 0.8 * b.dim }), 0, 0.12, 1.66, b.g));
+}
+// Row names painted on the floor (redrawn with the screens, so they pick up the heading font once it has loaded).
+const marks = [['NOW', 8.2, 5, '#ff6a50'], ['NEXT', -3, 10, '#eda100'], ['LATER', -15.5, 9, '#5dcaa5']].map(([txt, z, w, col]) => {
+  const tx = ctex(1024, 256);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 4), basic(0xffffff, { map: tx.t, transparent: true, opacity: 0.55, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.set(0, 0.03, z); scene.add(m); return { tx, txt, col }; });
+function drawMarks() {
+  marks.forEach(({ tx, txt, col }) => { const x = tx.x; x.clearRect(0, 0, 1024, 256); x.fillStyle = col; x.font = '800 210px ' + HEAD; x.textAlign = 'center'; x.fillText(txt, 512, 200); tx.t.needsUpdate = true; });
+}
 function applyDim() {   // the back rows sit in a dimmer part of the room
   BK.slice(0, 6).forEach((b) => { const v = b.dim; b.scrM.color.setScalar(v); b.cards.forEach((m) => m.material.color.setScalar(v)); });
 }
@@ -611,7 +649,7 @@ function setTasks(list) {
 }
 function redrawAll() {
   BK.slice(0, 6).forEach((b) => { drawScreen(b); b.cards.forEach((m) => drawCard(m.userData.tx, m.userData.task, b.col)); });
-  sats.forEach((o) => drawSat(o.tx, o.t)); drawPlaque(); drawBig(clock.elapsedTime);
+  sats.forEach((o) => drawSat(o.tx, o.t)); drawPlaque(); drawMarks(); drawBig(clock.elapsedTime);
 }
 
 /* =====================================================================================================

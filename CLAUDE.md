@@ -96,4 +96,9 @@ Live: https://www.davyrockett.com/launch-control/ See README.md.
   wall panels with screws and rubber keyboard decks are textures drawn in code (`texSet`; map + bump + roughness),
   near-white so the day/night palette still sets the tone. `box()` scales UVs to real size (`TEXU` units per repeat).
   The v4 attempt at colour management/tone mapping/shadows/reflections was undone at David's request.
+- **Fit-out** (David, 2026-11-21, picked "Fitted out" from three polish previews over "Grounded" = mirror floor + soft shadows and
+  "Atmosphere" = light shafts, spot cones, vignette): ceiling trusses with light panels, server racks on the side walls, window sill
+  and header, hazard stripes round the NOW row, NOW / NEXT / LATER painted on the floor (`marks`, `drawMarks`), a glow strip under
+  each desk. Plain geometry and glowing colour only, no extra lights. Ceiling and wall pieces go in `shellStrips` so they hide in the
+  dollhouse view. Chairs were tried in the preview and dropped (they blocked the keyboards). Preview code: `private/looks.js` (v1-v3).
 - localStorage keys start with `lc.` (`data`, `pending`, `theme`, `sync-token`).
