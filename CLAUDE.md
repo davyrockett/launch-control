@@ -105,4 +105,7 @@ Live: https://www.davyrockett.com/launch-control/ See README.md.
   especially on phone": phones render at their own pixel density up to 3 (was 1.6), desktop at 1.5-2, and screens/cards are drawn
   with 2x the pixels (`ctex(w, h, k)`; big screen 1.5x on phones). If a phone gets choppy, lower the cap in `setPixelRatio`.
   The toolbar Dusk/Night button names the look you switch TO; David asked to swap it, then agreed it was right as is.
+- **Big screen headline** (David, 2026-11-21): a gentle motivating line instead of the old "next launch" countdown,
+  which he found confusing. Lines are written in app.js (`MSG`; no AI, offline), some built from his real overdue/today
+  reminders and the time of day. New one on open, every 20 minutes, or on click; `lc.msg-seen` avoids repeats.
 - localStorage keys start with `lc.` (`data`, `pending`, `theme`, `sync-token`).

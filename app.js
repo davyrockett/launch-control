@@ -528,17 +528,126 @@ function drawPlaque() {
   x.fillStyle = S.sec; x.font = '24px ' + FONT; x.fillText('Someday · ' + HB.t.length + ' with no date', 24, 80); plaque.t.needsUpdate = true;
 }
 
+// ---------- a gentle word on the big screen (David, 2026-11-21: "something gentle to get me motivated that's always new") ----------
+// Written here (no AI, works offline). Lines that use the real reminders and the time of day keep it feeling fresh;
+// lc.msg-seen remembers recent ones so nothing repeats until most of the pool has been shown.
+const NUM = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];
+const num = (n) => NUM[n] || String(n);
+const MSG = {
+  calm: [
+    'One small thing, done well, is a good day’s start.',
+    'You don’t have to do it all. Just the next bit.',
+    'Progress counts even when it’s quiet.',
+    'Five minutes on one thing is enough to get moving.',
+    'Start messy. Tidy later.',
+    'The list isn’t a scoreboard. It’s a map.',
+    'Nothing here needs to be perfect. It just needs a turn.',
+    'Pick the one that would feel lightest to finish.',
+    'A rocket burns most of its fuel in the first minute. Getting started is the hard part.',
+    'Small steps still leave footprints.',
+    'Done is a lovely word. Let’s earn one.',
+    'Be kind to the person who wrote this list. That’s you.',
+    'Take a breath. Then one thing.',
+    'You’ve handled harder days than this one.',
+    'You can come back to the rest. Really.',
+    'One tick on the list changes how the whole list feels.',
+    'Every mission is a lot of small checks in a row.',
+    'Ground control says: you’re doing fine.',
+    'If it takes two minutes, it’s a gift to future you.',
+    'Rest is part of the flight plan too.',
+    'Slow is smooth. Smooth is fast.',
+    'Let one thing be easy today.',
+    'No rush. Just a direction.',
+    'Even the moon goes one phase at a time.',
+    'You don’t need motivation to start. Starting makes the motivation.',
+    'Clear one small thing and let it count.',
+    'A good practice session starts with tuning up. So does a good day.',
+    'You know how to break a hard passage into small bars. Same idea.',
+    'Play it slow first. Speed comes later.',
+    'Today doesn’t have to be a big day. A real one is enough.',
+    'The best time to start was earlier. The next best is now, gently.',
+    'One clean bar beats a messy run-through.',
+    'Steady hands. One switch at a time.',
+    'Your future self is cheering you on.',
+    'Fewer things, done with care.',
+    'It’s okay if today’s mission is a short one.',
+    'Just open it. You don’t have to finish it yet.',
+    'Something small and finished beats something big and waiting.',
+    'Check one box, then decide what’s next.',
+    'All systems are fine. Including you.',
+    'Look how far the list has already come.',
+    'Make it easy to start: set it up, then step in.',
+    'Momentum is gentle at first. Give it a nudge.',
+    'You’re allowed to do the fun one first.',
+    'Stay curious about the next step instead of worried about the whole climb.',
+    'Every orbit started with a slow lift-off.',
+    'A little at a time is still all the way, eventually.',
+    'Good enough, sent, is better than perfect, waiting.',
+    'You’re building the day one small decision at a time.',
+    'Breathe out. Pick up where you left off.',
+    'Tidy one corner. The rest will feel lighter.',
+    'Quiet effort adds up.',
+    'Showing up is most of the job.',
+    'Trust the plan you made when you were calm.',
+    'Even a short burn changes the orbit.',
+    'Let’s get one thing off the launch pad.',
+    'Your list believes in you. Mostly.',
+    'Nothing here is an emergency. It’s just a next step.',
+    'You get to choose what matters most right now.',
+    'Make a little room. Then make a little progress.',
+  ],
+  morning: ['Good morning. Coffee first, then one small win.', 'Fresh day, clean slate. What’s one easy start?', 'Morning. Let’s warm up with something light.', 'The day is wide open. Pick a gentle first step.'],
+  afternoon: ['Afternoon check-in: one thing, then a break.', 'Halfway through the day. A small finish would feel good.', 'Afternoon slump? Pick the shortest task on the board.', 'Plenty of day left for one good thing.'],
+  evening: ['Evening. One tiny thing, then let the day rest.', 'Wind-down mode: anything quick to set tomorrow up?', 'You did enough today. One more small one, only if you want.', 'Evening light. Easy does it.'],
+  night: ['It’s late. The list will keep. Rest well.', 'Night shift: nothing here needs you right now.', 'Stars are out. Tomorrow you’ll be fresher.', 'Late night. Maybe just write down what’s on your mind and sleep.'],
+  overdue: [
+    (n) => `${num(n)} overdue. That’s just a list, not a verdict. Pick one.`,
+    (n) => `${num(n)} waiting in recovery. Bring one home.`,
+    (n) => `${num(n)} things are late, and that’s okay. Start with the smallest.`,
+    (n) => `Overdue isn’t failure. It’s just “not yet.” ${num(n)} not-yets.`,
+    (n) => `${num(n)} overdue. Could any be crossed off as no longer needed?`,
+  ],
+  today: [
+    (n) => `${num(n)} on today’s flight plan. One at a time.`,
+    (n) => `Today has ${num(n).toLowerCase()} for you. Plenty of time.`,
+    (n) => `${num(n)} for today. Pick the one you’d enjoy most.`,
+  ],
+  pick: [
+    (t) => `Maybe just start with “${t}.”`,
+    (t) => `“${t}” could be a nice small win.`,
+    (t) => `What’s the very first step of “${t}”? Just that.`,
+    (t) => `How about five minutes on “${t}”?`,
+    (t) => `Clear the runway: “${t}.”`,
+  ],
+  clear: ['Board’s clear. Enjoy the quiet.', 'Nothing overdue, nothing pressing. Nicely done.', 'All clear today. Good time to rest or to plan.', 'Smooth skies. Take the win.'],
+};
+const msg = { text: '', at: 0, next: 0 };
+function pickMsg() {
+  const od = BK[0].t, td = BK[1].t, hr = new Date().getHours();
+  const part = hr < 5 ? 'night' : hr < 12 ? 'morning' : hr < 17 ? 'afternoon' : hr < 22 ? 'evening' : 'night';
+  const pool = MSG.calm.concat(MSG[part]);
+  if (od.length) pool.push(...MSG.overdue.map((f) => f(od.length)));
+  if (td.length) pool.push(...MSG.today.map((f) => f(td.length)));
+  const near = od.concat(td);
+  if (near.length) { const t = near[Math.floor(Math.random() * near.length)], nm = t.name.length > 42 ? t.name.slice(0, 40) + '…' : t.name; pool.push(...MSG.pick.map((f) => f(nm))); }
+  if (!od.length && !td.length) pool.push(...MSG.clear);
+  const seen = store.get('msg-seen', []);
+  let fresh = pool.filter((m) => !seen.includes(m) && m !== msg.text); if (!fresh.length) fresh = pool.filter((m) => m !== msg.text);
+  msg.text = fresh[Math.floor(Math.random() * fresh.length)]; msg.at = performance.now(); msg.next = Date.now() + 20 * 60000;
+  store.set('msg-seen', [msg.text].concat(seen).slice(0, 80));
+}
+function wrapText(x, s, w) {
+  const out = []; let line = '';
+  s.split(' ').forEach((word) => { const t = line ? line + ' ' + word : word; if (x.measureText(t).width > w && line) { out.push(line); line = word; } else line = t; });
+  if (line) out.push(line); return out;
+}
+
 // ---------- the big mission control screen ----------
 const BIG = { x: 0, y: 18.5, z: -29.3, w: 27, h: 9 };
 const big = ctex(1536, 512, touchy ? 1.5 : 2);
 const bigScr = new THREE.Mesh(new THREE.PlaneGeometry(BIG.w, BIG.h), basic(0xffffff, { map: big.t })); bigScr.position.set(BIG.x, BIG.y, BIG.z); scene.add(bigScr);
 bigScr.userData.big = true; picks.push(bigScr); box(28, 9.8, 0.3, frameM, 0, 18.5, -29.5);
-let tasks = [], NL = null, blips = [], segs = [], bigHover = null;
-function nextLaunch() {
-  const n = new Date(), f = tasks.filter((t) => t.due && parse(t.due) > n), timed = f.filter((t) => !t.allDay);
-  return (timed.length ? timed : f).sort((a, b) => parse(a.due) - parse(b.due))[0] || null;
-}
-function cd(ms) { if (ms < 0) return 'T+ 00:00:00'; const s = Math.floor(ms / 1000), d = Math.floor(s / 86400), z = (n) => String(n).padStart(2, '0'); return 'T-minus ' + (d ? d + 'd ' : '') + z(Math.floor(s % 86400 / 3600)) + ':' + z(Math.floor(s % 3600 / 60)) + ':' + z(s % 60); }
+let tasks = [], blips = [], segs = [], bigHover = null;
 const RC = { x: 1290, y: 262, r: 190 };
 function drawBig(T) {
   const { x, w, h } = big;
@@ -547,12 +656,15 @@ function drawBig(T) {
   x.fillStyle = S.acc; x.font = '800 50px ' + HEAD; x.fillText('MISSION CONTROL', 48, 74);
   x.fillStyle = S.mu; x.font = '30px ' + FONT;
   x.fillText(n.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) + '   ' + n.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }), 48, 114);
-  if (NL) {
-    if (bigHover && bigHover.kind === 'next') { x.fillStyle = S.line; rr(x, 36, 262, 940, 92, 10); x.fill(); }
-    x.fillStyle = S.tx; x.font = '500 100px ui-monospace,Menlo,monospace'; x.fillText(cd(parse(NL.due) - n), 48, 236);
-    x.fillStyle = S.acc2; x.font = '34px ' + FONT; x.fillText(fit(x, 'Next launch: ' + NL.name, 920), 48, 296);
-    x.fillStyle = S.mu; x.font = '28px ' + FONT; x.fillText(fmt(NL), 48, 338);
-  } else { x.fillStyle = S.tx; x.font = '500 64px ' + FONT; x.fillText(tasks.length ? 'No deadlines ahead' : 'Waiting for data', 48, 236); }
+  if (!msg.text && tasks.length) pickMsg();
+  if (bigHover && bigHover.kind === 'msg') { x.fillStyle = S.line; rr(x, 36, 136, 952, 228, 12); x.fill(); }
+  if (msg.text) {
+    let size = 60, lines = [];
+    for (; size >= 36; size -= 4) { x.font = '600 ' + size + 'px ' + FONT; lines = wrapText(x, msg.text, 920); if (lines.length <= 3) break; }
+    const lh = size * 1.24, top = 250 - (lines.length * lh) / 2 + size * 0.8;   // centred between the date and the bar
+    x.globalAlpha = clamp((performance.now() - msg.at) / 800, 0, 1); x.fillStyle = S.tx;
+    lines.slice(0, 3).forEach((l, k) => x.fillText(l, 48, top + k * lh)); x.globalAlpha = 1;
+  } else { x.fillStyle = S.tx; x.font = '500 64px ' + FONT; x.fillText('Waiting for data', 48, 236); }
   segs = []; let bx = 48; const bw = 920, tot = tasks.length;
   if (tot) BK.forEach((b, i) => {
     const sw = bw * b.t.length / tot; if (sw <= 0) return;
@@ -581,7 +693,7 @@ function drawBig(T) {
 function bigRegion(uv) {
   const px = uv.x * 1536, py = (1 - uv.y) * 512;
   if (py >= 368 && py <= 458) { const s = segs.find((s) => px >= s.x0 && px < s.x1); if (s) { const b = BK[s.i]; return { kind: 'seg', i: s.i, text: b.t.length + ' ' + b.l.toLowerCase() + '. Click to open the station.' }; } }
-  if (NL && py >= 250 && py <= 356 && px >= 36 && px <= 980) return { kind: 'next', i: BI(NL.b), id: NL.id, text: 'Open ' + NL.name };
+  if (msg.text && py >= 136 && py <= 364 && px >= 36 && px <= 988) return { kind: 'msg', text: touchy ? 'Tap for another' : 'Click for another' };
   const dx = px - RC.x, dy = py - RC.y;
   if (Math.hypot(dx, dy) < RC.r + 12) {
     let best = null, bd = touchy ? 40 : 24;
@@ -638,7 +750,6 @@ function setTasks(list) {
       tgt: V(Math.sin(ang) * ringR, (tier / (tiers - 1) - 0.5) * 6.4, Math.cos(ang) * ringR).multiplyScalar(SK).add(DS) });
     cardMeshes.push(s, lab);
   });
-  NL = nextLaunch();
   blips = tasks.filter((t) => ['overdue', 'today', 'tomorrow', 'week'].includes(t.b)).map((t, i) => {
     const r = { overdue: [30, 75], today: [90, 125], tomorrow: [135, 160], week: [160, 185] }[t.b];
     return { a: (i * 2.399) % 6.283, r: r[0] + ((i * 37) % 100) / 100 * (r[1] - r[0]), c: BK[BI(t.b)].col, bi: BI(t.b), t };
@@ -878,7 +989,7 @@ cvs.addEventListener('pointerup', (e) => {
   dragging = false; wrap.style.cursor = 'grab';
   if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > (touchy ? 10 : 5)) return;
   const h = hit(e, cardMeshes.concat(picks)); if (!h) return;
-  if (h.object.userData.big) { if (bigFocus && h.uv) { const r = bigRegion(h.uv); if (r) goStation(r.i, r.id); } else goBig(); return; }
+  if (h.object.userData.big) { if (bigFocus && h.uv) { const r = bigRegion(h.uv); if (r && r.kind === 'msg') pickMsg(); else if (r) goStation(r.i, r.id); } else goBig(); return; }
   goStation(h.object.userData.bi);
 });
 function showTip(e, html) { tip.innerHTML = html; tip.style.left = Math.min(e.clientX + 14, W - 270) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; tip.style.opacity = 1; }
@@ -941,6 +1052,7 @@ function loop() {
   }
   if (shootT >= 0) { shootT += dt; shoot.position.addScaledVector(shootV, dt); shoot.material.opacity = Math.max(0, Math.sin(Math.min(1, shootT / 1.1) * Math.PI)) * 0.9; if (shootT > 1.1) { shootT = -1; shoot.material.opacity = 0; shootNext = T + 5 + Math.random() * 7; } }
   if (T - lastBig > 0.1) {
+    if (msg.next && Date.now() > msg.next) pickMsg();   // a new line every 20 minutes
     drawBig(T); lastBig = T;
     if (innerWidth && (innerWidth !== W || innerHeight !== H)) onResize();   // a missed resize (opened in the background)
     const d0 = day0().getTime(); if (d0 !== lastDay) { lastDay = d0; refresh(); }   // past midnight: reminders move along a station
